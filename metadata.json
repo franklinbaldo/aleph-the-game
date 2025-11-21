@@ -1,0 +1,7 @@
+{
+  "name": "The Aleph: Infinite Borges",
+  "description": "A literary text-adventure game based on Jorge Luis Borges' 'The Aleph', blending classical prose with modern internet vernacular.",
+  "requestFramePermissions": [
+    "microphone"
+  ]
+}
