@@ -29,7 +29,7 @@ const App: React.FC = () => {
   const [segmentsToShow, setSegmentsToShow] = useState<number>(1);
   const [showMobileObjectives, setShowMobileObjectives] = useState(false);
   const [notification, setNotification] = useState<string | null>(null);
-  const [ttsEnabled, setTtsEnabled] = useState<boolean>(false);
+  const [autoPlayAudio, setAutoPlayAudio] = useState<boolean>(false); // Renamed for clarity
   const scrollRef = useRef<HTMLDivElement>(null);
 
   // Calculate current game time based on the last visible segment
@@ -135,7 +135,8 @@ const App: React.FC = () => {
         text: n.lines,
         timestamp: n.timestamp,
         imagePrompt: n.imagePrompt,
-        imageUrl: n.imageUrl
+        imageUrl: n.imageUrl,
+        tone: n.tone
       }));
 
       // Convert API choices to local Choice type
@@ -193,7 +194,8 @@ const App: React.FC = () => {
             id: 'sanity-death',
             sender: Sender.System,
             text: ['>OBSESSION LEVEL CRITICAL', '>BOREDOM EXCEEDED LIMITS', '>YOU LEFT THE HOUSE'],
-            timestamp: 'The End of Meaning'
+            timestamp: 'The End of Meaning',
+            tone: 'cold and final'
           };
         }
       }
@@ -269,10 +271,12 @@ const App: React.FC = () => {
         <div className="flex items-center gap-3 z-10">
           
           <button 
-            onClick={() => setTtsEnabled(!ttsEnabled)}
-            className={`transition-colors p-1 ${ttsEnabled ? 'text-green-400' : 'text-gray-600'}`}
+            onClick={() => setAutoPlayAudio(!autoPlayAudio)}
+            className={`transition-colors p-1 flex items-center gap-1 ${autoPlayAudio ? 'text-green-400' : 'text-gray-600'}`}
+            title={autoPlayAudio ? "Auto-Play Audio ON" : "Auto-Play Audio OFF"}
           >
-            {ttsEnabled ? <Volume2 className="w-4 h-4" /> : <VolumeX className="w-4 h-4" />}
+            {autoPlayAudio ? <Volume2 className="w-4 h-4" /> : <VolumeX className="w-4 h-4" />}
+            <span className="text-[10px] font-mono uppercase hidden sm:inline">{autoPlayAudio ? 'AUTO' : 'MANUAL'}</span>
           </button>
 
           {/* Mobile Objective Toggle */}
@@ -346,12 +350,13 @@ const App: React.FC = () => {
                 <TypingText 
                   lines={segment.text} 
                   sender={segment.sender} 
+                  tone={segment.tone}
                   onComplete={handleSegmentComplete}
-                  ttsEnabled={ttsEnabled}
+                  autoPlay={autoPlayAudio && index === segmentsToShow - 1} // Only auto-play if it's the newest segment and toggle is ON
                 />
 
                 {/* Per-Segment Share Button */}
-                <div className="absolute -right-6 top-0 opacity-0 group-hover:opacity-100 transition-opacity duration-300 sm:block hidden">
+                <div className="absolute -right-6 top-8 opacity-0 group-hover:opacity-100 transition-opacity duration-300 sm:block hidden">
                   <button 
                     onClick={() => handleFullHistoryShare(index)}
                     className="p-1.5 text-gray-700 hover:text-green-500 transition-colors"

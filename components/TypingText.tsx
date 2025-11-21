@@ -1,96 +1,180 @@
+
 import React, { useEffect, useState, useRef } from 'react';
 import { motion } from 'framer-motion';
 import { Sender } from '../types';
+import { generateSpeech } from '../services/geminiService';
+import { Play, Square, Loader2 } from 'lucide-react';
 
 interface TypingTextProps {
   lines: string[];
   sender: Sender | string;
+  tone?: string;
   onComplete?: () => void;
-  ttsEnabled?: boolean;
+  autoPlay?: boolean;
 }
 
-const TypingText: React.FC<TypingTextProps> = ({ lines, sender, onComplete, ttsEnabled = false }) => {
+// Helper to decode base64 string to byte array
+function decode(base64: string) {
+  const binaryString = atob(base64);
+  const len = binaryString.length;
+  const bytes = new Uint8Array(len);
+  for (let i = 0; i < len; i++) {
+    bytes[i] = binaryString.charCodeAt(i);
+  }
+  return bytes;
+}
+
+// Helper to decode raw PCM data to AudioBuffer
+async function decodeAudioData(
+  data: Uint8Array,
+  ctx: AudioContext,
+  sampleRate: number,
+  numChannels: number,
+): Promise<AudioBuffer> {
+  const dataInt16 = new Int16Array(data.buffer);
+  const frameCount = dataInt16.length / numChannels;
+  const buffer = ctx.createBuffer(numChannels, frameCount, sampleRate);
+
+  for (let channel = 0; channel < numChannels; channel++) {
+    const channelData = buffer.getChannelData(channel);
+    for (let i = 0; i < frameCount; i++) {
+      channelData[i] = dataInt16[i * numChannels + channel] / 32768.0;
+    }
+  }
+  return buffer;
+}
+
+const TypingText: React.FC<TypingTextProps> = ({ lines, sender, tone, onComplete, autoPlay = false }) => {
   const [visibleLines, setVisibleLines] = useState<number>(0);
-  const isSpeakingRef = useRef(false);
-  const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  
+  // Audio State
+  const [isPlaying, setIsPlaying] = useState(false);
+  const [isLoadingAudio, setIsLoadingAudio] = useState(false);
+  
+  const audioContextRef = useRef<AudioContext | null>(null);
+  const currentSourceRef = useRef<AudioBufferSourceNode | null>(null);
+  const isMountedRef = useRef(true);
+  const shouldStopRef = useRef(false);
 
   useEffect(() => {
-    if (visibleLines >= lines.length) {
-      onComplete?.();
-      return;
+    isMountedRef.current = true;
+    // Initialize AudioContext on mount
+    const AudioContextClass = window.AudioContext || (window as any).webkitAudioContext;
+    if (AudioContextClass) {
+      audioContextRef.current = new AudioContextClass({ sampleRate: 24000 });
     }
 
-    const currentLineIndex = visibleLines;
-    const currentLineText = lines[currentLineIndex];
-
-    const next = () => {
-      isSpeakingRef.current = false;
-      setVisibleLines((prev) => prev + 1);
-    };
-
-    if (ttsEnabled && window.speechSynthesis) {
-      const utterance = new SpeechSynthesisUtterance(currentLineText);
-      const voices = window.speechSynthesis.getVoices();
-      
-      let selectedVoice = voices.find(v => v.name.includes('Google US English')) || 
-                          voices.find(v => v.lang.startsWith('en')) || 
-                          voices[0];
-      
-      if (selectedVoice) utterance.voice = selectedVoice;
-
-      const senderUpper = String(sender).toUpperCase();
-      if (senderUpper === 'BORGES' || senderUpper === 'PLAYER') {
-        utterance.pitch = 0.8;
-        utterance.rate = 0.9;
-      } else if (senderUpper === 'CARLOS') {
-        utterance.pitch = 1.15;
-        utterance.rate = 1.2;
-      } else if (senderUpper === 'SYSTEM') {
-        utterance.pitch = 1.0;
-        utterance.rate = 1.0;
-        utterance.volume = 0.7;
-      }
-
-      utterance.onend = () => {
-        next();
-      };
-
-      utterance.onerror = (e) => {
-        console.warn("TTS Error", e);
-        next();
-      };
-
-      isSpeakingRef.current = true;
-      window.speechSynthesis.speak(utterance);
-
-    } else {
-      const delay = currentLineText.startsWith('>') ? 400 : 800;
-      timeoutRef.current = setTimeout(next, delay);
+    // If Auto-play is enabled, start playing immediately
+    if (autoPlay) {
+      startPlayback();
     }
 
     return () => {
-      if (timeoutRef.current) clearTimeout(timeoutRef.current);
-      if (isSpeakingRef.current && ttsEnabled) {
-        window.speechSynthesis.cancel();
-        isSpeakingRef.current = false;
+      isMountedRef.current = false;
+      stopPlayback();
+      if (audioContextRef.current && audioContextRef.current.state !== 'closed') {
+        audioContextRef.current.close();
       }
     };
-  }, [visibleLines, lines, sender, onComplete, ttsEnabled]);
+  }, []);
+
+  // Text Reveal Animation Effect
+  useEffect(() => {
+    if (visibleLines < lines.length) {
+      // Standard typing logic
+      const delay = lines[visibleLines].startsWith('>') ? 300 : 500;
+      const timer = setTimeout(() => {
+        setVisibleLines(prev => prev + 1);
+      }, delay);
+      return () => clearTimeout(timer);
+    } else {
+      onComplete?.();
+    }
+  }, [visibleLines, lines, onComplete]);
+
+  const stopPlayback = () => {
+    shouldStopRef.current = true;
+    if (currentSourceRef.current) {
+      try { currentSourceRef.current.stop(); } catch(e) {}
+    }
+    setIsPlaying(false);
+    setIsLoadingAudio(false);
+  };
+
+  const startPlayback = async () => {
+    if (isPlaying) return; // Prevent double start
+    
+    setIsPlaying(true);
+    shouldStopRef.current = false;
+
+    // Ensure audio context is running
+    if (audioContextRef.current?.state === 'suspended') {
+      await audioContextRef.current.resume();
+    }
+
+    try {
+      setIsLoadingAudio(true);
+      
+      // Join all lines to send as a single request for smoother audio
+      const fullText = lines.join(' ');
+      
+      // If we are starting playback, ensure all text is visible so user can read along
+      setVisibleLines(lines.length);
+
+      const base64Audio = await generateSpeech(fullText, sender, tone);
+      setIsLoadingAudio(false);
+
+      if (shouldStopRef.current || !isMountedRef.current) return;
+
+      if (!base64Audio) {
+        // Skip if generation failed
+        stopPlayback();
+        return;
+      }
+
+      const ctx = audioContextRef.current;
+      if (!ctx) return;
+
+      const audioBytes = decode(base64Audio);
+      const audioBuffer = await decodeAudioData(audioBytes, ctx, 24000, 1);
+
+      const source = ctx.createBufferSource();
+      source.buffer = audioBuffer;
+      source.connect(ctx.destination);
+
+      source.onended = () => {
+        if (shouldStopRef.current) return;
+        stopPlayback();
+      };
+
+      currentSourceRef.current = source;
+      source.start(0);
+
+    } catch (err) {
+      console.error("Playback error", err);
+      stopPlayback();
+    }
+  };
+
+  const handleTogglePlay = () => {
+    if (isPlaying) {
+      stopPlayback();
+    } else {
+      startPlayback();
+    }
+  };
 
   const getSenderStyle = (s: Sender | string) => {
     const sUpper = String(s).toUpperCase();
     switch (sUpper) {
       case Sender.Borges:
       case 'BORGES':
-        // Classic greentext style, readable size
         return 'text-green-400 font-mono text-sm sm:text-base leading-relaxed'; 
       case Sender.Carlos:
       case 'CARLOS':
-        // Large, yellow, serif, italic - distinct personality
         return 'text-yellow-400 font-serif italic text-lg sm:text-xl leading-loose tracking-wide'; 
       case Sender.System:
       case 'SYSTEM':
-        // Distinct red/pink warning style
         return 'text-red-400 font-mono text-xs sm:text-sm uppercase tracking-widest font-bold';
       case Sender.Player:
         return 'text-gray-500 italic font-serif';
@@ -100,7 +184,31 @@ const TypingText: React.FC<TypingTextProps> = ({ lines, sender, onComplete, ttsE
   };
 
   return (
-    <div className="space-y-3 mb-6">
+    <div className="relative group space-y-3 mb-6">
+      
+      {/* Audio Control Button (Visible on hover or when playing) */}
+      <div className={`absolute -right-8 top-0 transition-opacity duration-300 ${isPlaying || visibleLines === lines.length ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'}`}>
+        <button 
+          onClick={handleTogglePlay}
+          disabled={isLoadingAudio && isPlaying}
+          className={`
+            p-2 rounded-full border bg-black/50 backdrop-blur-sm transition-all
+            ${isPlaying 
+              ? 'border-green-500 text-green-400 shadow-[0_0_10px_rgba(34,197,94,0.2)]' 
+              : 'border-gray-800 text-gray-600 hover:text-green-500 hover:border-green-500/50'}
+          `}
+          title={isPlaying ? "Stop Narration" : "Play Narration"}
+        >
+          {isLoadingAudio ? (
+            <Loader2 className="w-3 h-3 animate-spin" />
+          ) : isPlaying ? (
+            <Square className="w-3 h-3 fill-current" />
+          ) : (
+            <Play className="w-3 h-3 fill-current" />
+          )}
+        </button>
+      </div>
+
       {lines.slice(0, visibleLines + 1).map((line, index) => (
          index <= visibleLines && index < lines.length && (
           <motion.div
@@ -108,7 +216,11 @@ const TypingText: React.FC<TypingTextProps> = ({ lines, sender, onComplete, ttsE
             initial={{ opacity: 0, x: -5 }}
             animate={{ opacity: 1, x: 0 }}
             transition={{ duration: 0.4 }}
-            className={getSenderStyle(sender)}
+            className={`
+              ${getSenderStyle(sender)}
+              transition-all duration-300
+              ${isPlaying ? 'opacity-100 drop-shadow-[0_0_5px_rgba(255,255,255,0.1)]' : 'opacity-90'}
+            `}
           >
             {line.startsWith('>') ? (
               <span>

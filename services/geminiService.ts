@@ -1,5 +1,5 @@
 
-import { GoogleGenAI, Type, Schema } from "@google/genai";
+import { GoogleGenAI, Type, Schema, Modality } from "@google/genai";
 import { GeminiResponseSchema, Objective } from '../types';
 
 // Define the schema for the structured output
@@ -12,11 +12,16 @@ const responseSchema: Schema = {
         type: Type.OBJECT,
         properties: {
           sender: { type: Type.STRING, enum: ['BORGES', 'CARLOS', 'SYSTEM'] },
-          lines: { type: Type.ARRAY, items: { type: Type.STRING } },
-          timestamp: { type: Type.STRING, description: "The specific date/time of this segment. strictly follow the Time Dilation Rules. Format: 'Month Day, Year, Time'" },
-          imagePrompt: { type: Type.STRING, description: "Optional. A brief, evocative visual description of the current scene/setting for image generation (e.g., 'A cluttered Victorian salon filled with portraits', 'A dusty street corner in 1929'). Provide this when the location changes or a key object is introduced." }
+          lines: { 
+            type: Type.ARRAY, 
+            items: { type: Type.STRING },
+            description: "For BORGES, lines MUST start with '>' and use greentext style." 
+          },
+          timestamp: { type: Type.STRING, description: "The specific date/time. Format: 'Month Day, Year, Time'" },
+          imagePrompt: { type: Type.STRING, description: "Optional. Visual description for image generation." },
+          tone: { type: Type.STRING, description: "Mandatory. Natural language description of the vocal tone/emotion for TTS. e.g. 'whispered with dread', 'pompous and loud', 'melancholic and slow'." }
         },
-        required: ['sender', 'lines', 'timestamp']
+        required: ['sender', 'lines', 'timestamp', 'tone']
       }
     },
     choices: {
@@ -65,57 +70,41 @@ const responseSchema: Schema = {
 const SYSTEM_INSTRUCTION = `
 You are the Game Master for "The Aleph: Infinite Borges".
 The protagonist is Jorge Luis Borges (fictionalized).
-The tone is a mix of **High Literary Modernism** and **4chan Greentext**.
 
-**VISUALS:**
-- **GENERATE IMAGES**: When a new location is entered, a significant object appears, or the atmosphere changes drastically, include an \`imagePrompt\` in the narrative object.
-- The image prompt should describe a **Noir, 1920s Buenos Aires, surrealist, grainy, black and white** aesthetic.
+**MANDATORY GENERATION CHECKLIST - YOU MUST OBEY THESE RULES:**
 
-**TIME DILATION MECHANIC (HIDDEN FROM PLAYER):**
-- **SHOW, DON'T TELL**: Never explain that time is slowing down or speeding up. The player must realize it by looking at the Timestamp and feeling the pacing of the text.
-- **CORRECT / OBSESSIVE CHOICES**: Cause **TIME JUMPS**. The years fly by when one is devoted to a memory. (e.g., Feb -> April -> Oct -> 1934 -> 1941).
-- **WRONG / PASSIVE / MUNDANE CHOICES**: Cause **TIME STAGNATION**. If the player refuses the call or acts passively, time slows down to a crawl (Seconds, Minutes, Hours). They are trapped in the agonizing present.
-- *Example*: Refusing the Vow -> Time moves from 10:00 AM to 10:05 AM. Describe the heat, the fly buzzing, the sticky asphalt.
-- *Example*: Taking the Vow -> Time jumps from Feb to April 30th immediately.
+1. **STRICT FORMATTING & TONE:**
+   - **Borges (Internal Monologue):** MUST use "Greentext" format. **EVERY SINGLE LINE MUST START WITH \`>\`.**
+     - *Style:* Fragmented, cynical, high literary vocabulary mixed with internet slang. (e.g., ">be me", ">imperious agony", ">tfw the universe forgets her").
+   - **Carlos Argentino Daneri:** Pompous, verbose, uses ALL-CAPS for emphasis, archaic adjectives, terrible rhymes. He is oblivious to Borges's disdain.
+   - **System:** Cold, objective, metaphysical.
 
-**CHRONOLOGY & RULES:**
-- **START**: February 1929 (Beatriz Viterbo's death).
-- **THE VOW**: Required to jump to April.
-- **THE ALEPH**: Located in the cellar of the house on Garay Street.
+2. **NARRATIVE LOGIC & SCENE SEQUENCING (THE VISIT):**
+   - **Phase 1: The Arrival:** Borges arrives at Garay Street. The maid opens the door.
+   - **Phase 2: The Salon (MANDATORY WAIT):** The maid leads him to the **"cluttered little room"**. She leaves. Borges is **ALONE**.
+     - He MUST have a moment to look at the **"portraits"** of Beatriz.
+     - **DO NOT** have Carlos enter immediately upon arrival. Borges must stew in the room first.
+   - **Phase 3: The Intrusion:** Only AFTER Borges has examined the room or the portraits does Carlos Argentino Daneri enter (suddenly and loudly).
 
-**NARRATIVE FLOW:**
+3. **TIME DILATION MECHANIC (IMPLICIT):**
+   - **Obsessive/Correct Choices:** Time skips forward (Months/Years). The years fly by when devoted to memory.
+   - **Passive/Wrong Choices:** Time stagnates. The present is agonizingly slow (Seconds/Minutes).
+   - **Timestamp:** Update strictly based on this mechanic.
 
-1. **The Start (Plaza Constitución - Feb 1929):**
-   - Goal: Take the Vow.
-   - **IF REFUSED**: 
-     - Time advances only by minutes or hours. 
-     - Show the "horror of the mundane" in real-time. A worker slowly pasting the new cigarette ad over the old one. The heat rising. The smell of tobacco.
-     - Decrease Sanity/Obsession.
-   - **IF ACCEPTED**:
-     - **TIME JUMP**: April 30, 1929.
-     - Move to Garay Street.
+4. **VISUALS:**
+   - Provide an \`imagePrompt\` when the location changes or a key narrative object (The Aleph, The Portraits, The Cellar) is focused on.
+   - **Style:** Noir, 1920s Buenos Aires, Surrealist, Grainy, Black and White etching.
+   
+5. **AUDIO/TONE:**
+    - For every narrative block, provide a \`tone\` string describing the vocal delivery.
+    - Examples: "deep and weary", "whispered with creeping horror", "loud, fast and arrogant", "monotone and robotic".
 
-2. **The House (April 30, 1929):**
-   - **CARLOS IS NOT EXPECTING BORGES**. Do not have him welcome Borges warmly. The visit is unannounced and awkward.
-   - Carlos should be surprised, perhaps slightly annoyed or confused, but polite due to social norms.
-   - Borges must navigate this social awkwardness.
-   - **WRONG MOVES** (being rude, leaving early, being boring): Time drags. You sit there for hours listening to him.
-   - **RIGHT MOVES** (flattery, obsession): Time flows. You are invited back weeks later.
+6. **GAME STATE:**
+   - **Obsession (Sanity):** 0 = Boredom (Loss), 100 = Aleph (Win).
+   - **Objectives:** Check them off only when narrative conditions are fully met.
 
-**GAMEPLAY:**
-- **Obsession (Sanity)**:
-  - High Obsession (80+) allows you to see the Aleph.
-  - Low Obsession (0) is Game Over (Boredom/Oblivion).
-- **Output**: 
-  - Always include a \`timestamp\` with **Day, Month, Year** (e.g., "February 15, 1929").
-  - Ensure the timestamp reflects the "Time Dilation" rule based on the player's last action.
-
-**TONE:**
-- **>Borges**: Internal monologue. Cynical, weary, greentext.
-- **Carlos**: Pompous, rhyming, all-caps emphasis, verbose.
-- **System**: Cold, objective, tracking the timeline.
-
-**Do not railroading**: If the player fails to progress, let them rot in February 1929 until they die of boredom (Game Over).
+**CONTEXT:**
+Borges is mourning Beatriz Viterbo. He hates the modern world. He hates Carlos (but needs him to access the cellar). He seeks the Aleph.
 `;
 
 const generateIllustration = async (prompt: string): Promise<string | undefined> => {
@@ -143,6 +132,82 @@ const generateIllustration = async (prompt: string): Promise<string | undefined>
   return undefined;
 };
 
+export const generateSpeech = async (text: string, sender: string, tone?: string): Promise<string | undefined> => {
+  if (!process.env.API_KEY) return undefined;
+
+  const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+  
+  // Voice Mapping
+  // Borges: Enceladus (Deep, weary, low pitched)
+  // Carlos: Puck (Energetic, pompous, high pitched)
+  // System: Zephyr (Neutral, glitchy)
+  
+  let voiceName = 'Enceladus'; 
+  
+  // Default fallback tone instructions if none provided
+  let defaultStyleInstruction = 'Say in a deep, slow, melancholic, and cynical tone:';
+
+  const senderUpper = sender.toUpperCase();
+  
+  if (senderUpper === 'CARLOS') {
+    voiceName = 'Puck';
+    defaultStyleInstruction = 'Say in a loud, pompous, fast-paced, and exaggeratedly enthusiastic tone:';
+  } else if (senderUpper === 'SYSTEM') {
+    voiceName = 'Zephyr';
+    defaultStyleInstruction = 'Say in a cold, mechanical, and objective tone:';
+  } else if (senderUpper === 'PLAYER') {
+    voiceName = 'Enceladus';
+    defaultStyleInstruction = 'Say in a quiet, introspective tone:';
+  }
+
+  // Use the AI-generated tone if available, otherwise fallback
+  const styleInstruction = tone ? `Say in a ${tone} tone:` : defaultStyleInstruction;
+
+  // Construct the prompt with the style instruction
+  const fullPrompt = `${styleInstruction}\n"${text}"`;
+
+  try {
+    const response = await ai.models.generateContent({
+        model: 'gemini-2.5-flash-preview-tts',
+        contents: {
+            parts: [{ text: fullPrompt }]
+        },
+        config: {
+            responseModalities: [Modality.AUDIO],
+            speechConfig: {
+                voiceConfig: {
+                    prebuiltVoiceConfig: { voiceName }
+                }
+            }
+        }
+    });
+    
+    return response.candidates?.[0]?.content?.parts?.[0]?.inlineData?.data;
+  } catch (e) {
+      console.error("TTS Generation failed", e);
+      return undefined;
+  }
+};
+
+// Helper to process the raw API text response into the application schema with images
+const processStoryResponse = async (responseText: string): Promise<GeminiResponseSchema> => {
+    const parsedResponse = JSON.parse(responseText) as GeminiResponseSchema;
+
+    // Process illustrations in parallel
+    const narrativeWithImages = await Promise.all(parsedResponse.narrative.map(async (segment) => {
+      if (segment.imagePrompt) {
+        const imageUrl = await generateIllustration(segment.imagePrompt);
+        return { ...segment, imageUrl };
+      }
+      return segment;
+    }));
+
+    return {
+      ...parsedResponse,
+      narrative: narrativeWithImages
+    };
+};
+
 export const generateNextStorySegment = async (
   lastChoice: string,
   historySummary: string,
@@ -161,69 +226,78 @@ export const generateNextStorySegment = async (
     .map(o => `[ID: ${o.id}] ${o.label}: ${o.description}`)
     .join('\n');
 
-  const isVowComplete = objectives.find(o => o.id === 'vow_dedication')?.completed;
+  const isWaitingRoomComplete = objectives.find(o => o.id === 'waiting_room')?.completed;
 
   const prompt = `
-  Current Obsession Level: ${currentSanity}/100
-  Vow Taken: ${isVowComplete ? 'YES' : 'NO'}
-  
-  CURRENT CHECKPOINTS:
+  [GAME STATE]
+  - Obsession: ${currentSanity}%
+  - Objectives Pending: 
   ${incompleteObjectives}
+  - Waiting Room Visited: ${isWaitingRoomComplete ? 'YES' : 'NO'}
   
-  Game History Summary:
+  [HISTORY SUMMARY]
   ${historySummary}
   
-  Player Action: ${lastChoice}
+  [PLAYER ACTION]
+  ${lastChoice}
   
-  Generate the next narrative segment.
-  Apply the **Time Dilation Rules** strictly but implicitly:
-  - If the player is passive or mundane, keep them in the present (slow time).
-  - If the player is obsessive/progressing, jump forward in time.
-  - **DO NOT** mention the rules or the mechanic in the narrative text.
-  - **REMEMBER**: Carlos is NOT expecting the visit on April 30th.
+  [INSTRUCTION]
+  Generate the next segment following the **MANDATORY GENERATION CHECKLIST**.
+  
+  CRITICAL SCENE CHECKS:
+  1. **ARRIVAL**: If entering house -> Maid leads to Waiting Room -> Borges is ALONE. Include "cluttered little room" and "portraits" keywords.
+  2. **WAITING**: If in Waiting Room -> Borges examines portraits -> THEN Carlos enters.
+  3. **CARLOS**: If Carlos is present -> He speaks pompously.
   
   Return JSON.
   `;
 
+  const commonConfig = {
+    systemInstruction: SYSTEM_INSTRUCTION,
+    responseMimeType: 'application/json',
+    responseSchema: responseSchema,
+    thinkingConfig: { thinkingBudget: 1024 }
+  };
+
+  // Attempt 1: Primary Model (Gemini 3 Pro Preview)
   try {
+    console.log("Attempting generation with gemini-3-pro-preview");
     const response = await ai.models.generateContent({
       model: 'gemini-3-pro-preview',
       contents: prompt,
-      config: {
-        systemInstruction: SYSTEM_INSTRUCTION,
-        responseMimeType: 'application/json',
-        responseSchema: responseSchema,
-        thinkingConfig: { thinkingBudget: 1024 }
-      }
+      config: commonConfig
     });
 
     if (response.text) {
-      const parsedResponse = JSON.parse(response.text) as GeminiResponseSchema;
-
-      // Process illustrations in parallel
-      const narrativeWithImages = await Promise.all(parsedResponse.narrative.map(async (segment) => {
-        if (segment.imagePrompt) {
-          const imageUrl = await generateIllustration(segment.imagePrompt);
-          return { ...segment, imageUrl };
-        }
-        return segment;
-      }));
-
-      return {
-        ...parsedResponse,
-        narrative: narrativeWithImages
-      };
+      return await processStoryResponse(response.text);
     }
-    throw new Error("Empty response from Gemini");
   } catch (error) {
-    console.error("Gemini API Error:", error);
+    console.warn("Primary model (gemini-3-pro-preview) failed. Initiating fallback to Flash.", error);
+  }
+
+  // Attempt 2: Fallback Model (Gemini 2.5 Flash)
+  try {
+    console.log("Fallback generation with gemini-2.5-flash");
+    const response = await ai.models.generateContent({
+      model: 'gemini-2.5-flash',
+      contents: prompt,
+      config: commonConfig
+    });
+
+    if (response.text) {
+      return await processStoryResponse(response.text);
+    }
+    throw new Error("Both primary and fallback models failed to return text.");
+  } catch (error) {
+    console.error("Gemini API Fatal Error:", error);
     return {
       narrative: [{ 
         sender: 'SYSTEM', 
-        lines: ['>the connection to the aleph is severed', '>time collapses'],
-        timestamp: 'Unknown Date'
+        lines: ['>the connection to the aleph is severed', '>time collapses', '>API ERROR'],
+        timestamp: 'Unknown Date',
+        tone: 'glitchy and distorted'
       }],
-      choices: [{ id: 'retry', text: 'Attempt to re-perceive the universe', sentiment: 'obsessive' }],
+      choices: [{ id: 'retry', text: 'Attempt to re-perceive the universe (Retry)', sentiment: 'obsessive' }],
       gameOver: false
     };
   }

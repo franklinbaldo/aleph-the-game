@@ -26,6 +26,7 @@ export interface StorySegment {
   imagePrompt?: string; // For generating/showing context images
   imageUrl?: string; // The generated base64 image
   timestamp?: string; // Date and time of the segment
+  tone?: string; // Natural language description of the vocal tone (e.g. "whispered", "angry")
 }
 
 export interface GameState {
@@ -44,6 +45,7 @@ export interface GeminiResponseSchema {
     timestamp: string;
     imagePrompt?: string;
     imageUrl?: string; // Populated by the service after generation
+    tone?: string; // Instruction for TTS
   }[];
   choices: {
     id: string;
