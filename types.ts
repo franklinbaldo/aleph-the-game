@@ -25,6 +25,8 @@ export interface StorySegment {
   text: string[]; // Array of lines for greentext style
   imagePrompt?: string; // For generating/showing context images
   imageUrl?: string; // The generated base64 image
+  musicPrompt?: string; // Description for ambient audio
+  musicUrl?: string; // The generated base64 audio
   timestamp?: string; // Date and time of the segment
   tone?: string; // Natural language description of the vocal tone (e.g. "whispered", "angry")
 }
@@ -36,6 +38,7 @@ export interface GameState {
   objectives: Objective[];
   gameOver: boolean;
   sanity: number; // Represents "Obsession"
+  visitCount: number; // Tracks the number of annual visits (0 to 12)
 }
 
 export interface GeminiResponseSchema {
@@ -45,6 +48,8 @@ export interface GeminiResponseSchema {
     timestamp: string;
     imagePrompt?: string;
     imageUrl?: string; // Populated by the service after generation
+    musicPrompt?: string; // Description of the ambient sound
+    musicUrl?: string; // Populated by the service
     tone?: string; // Instruction for TTS
   }[];
   choices: {
@@ -54,6 +59,7 @@ export interface GeminiResponseSchema {
   }[];
   statUpdates?: {
     sanityChange?: number;
+    visitCountChange?: number;
   };
   completedObjectiveIds?: string[];
   newObjectives?: Objective[]; // New objectives created dynamically by AI

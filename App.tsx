@@ -1,9 +1,9 @@
 
 import React, { useState, useEffect, useRef } from 'react';
-import { BookOpen, Skull, Eye, Target, Clock, Volume2, VolumeX, Share2 } from 'lucide-react';
+import { BookOpen, Skull, Eye, Target, Clock, Volume2, VolumeX, Share2, Globe, Music, Music2 } from 'lucide-react';
 import { INITIAL_SEGMENTS, INITIAL_OBJECTIVES } from './constants';
 import { GameState, Choice, StorySegment, Sender, Objective } from './types';
-import { generateNextStorySegment } from './services/geminiService';
+import { generateNextStorySegment, generateIllustration, generateSoundtrack } from './services/geminiService';
 import TypingText from './components/TypingText';
 import ChoiceButton from './components/ChoiceButton';
 import PortraitGallery from './components/PortraitGallery';
@@ -11,30 +11,90 @@ import RoomObjects from './components/RoomObjects';
 import ObjectiveTracker from './components/ObjectiveTracker';
 import ActionInput from './components/ActionInput';
 import ToastNotification from './components/ToastNotification';
+import LanguageSelector from './components/LanguageSelector';
+import AmbientSound from './components/AmbientSound';
 
 const App: React.FC = () => {
   const [gameState, setGameState] = useState<GameState>({
     history: INITIAL_SEGMENTS,
     isThinking: false,
     choices: [
-      { id: 'vow', text: 'Consecrate myself to her memory (Refuse the change)', sentiment: 'obsessive' },
-      { id: 'accept', text: 'Accept the universe moves on (Move on)', sentiment: 'passive' },
-      { id: 'analyze', text: 'Analyze the semiotics of the cigarette ad', sentiment: 'intellectual' }
+      { id: 'vow', text: 'To forget is to kill her again.', sentiment: 'obsessive' },
+      { id: 'accept', text: 'The February heat dissolves all things.', sentiment: 'passive' },
+      { id: 'analyze', text: 'Catalog the precise decay of the iron.', sentiment: 'intellectual' }
     ],
     objectives: INITIAL_OBJECTIVES,
     gameOver: false,
-    sanity: 100
+    sanity: 100,
+    visitCount: 0
   });
 
   const [segmentsToShow, setSegmentsToShow] = useState<number>(1);
   const [showMobileObjectives, setShowMobileObjectives] = useState(false);
   const [notification, setNotification] = useState<string | null>(null);
-  const [autoPlayAudio, setAutoPlayAudio] = useState<boolean>(false); // Renamed for clarity
+  const [autoPlayAudio, setAutoPlayAudio] = useState<boolean>(false);
+  const [musicEnabled, setMusicEnabled] = useState<boolean>(false);
+  
+  // Language State
+  const [language, setLanguage] = useState<string>('English');
+  const [showLanguageSelector, setShowLanguageSelector] = useState(false);
+  
   const scrollRef = useRef<HTMLDivElement>(null);
+  const hasGeneratedIntroRef = useRef(false);
+
+  // Generate intro assets on load
+  useEffect(() => {
+    const generateIntroAssets = async () => {
+      if (hasGeneratedIntroRef.current) return;
+      hasGeneratedIntroRef.current = true;
+
+      const introSegment = gameState.history[0];
+      let updatedSegment = { ...introSegment };
+      let hasUpdates = false;
+
+      // Image
+      if (introSegment.imagePrompt && !introSegment.imageUrl) {
+        try {
+          const imageUrl = await generateIllustration(introSegment.imagePrompt);
+          if (imageUrl) {
+            updatedSegment.imageUrl = imageUrl;
+            hasUpdates = true;
+          }
+        } catch (e) {
+          console.error("Failed to generate intro image", e);
+        }
+      }
+
+      // Music
+      if (introSegment.musicPrompt && !introSegment.musicUrl) {
+         try {
+           const musicUrl = await generateSoundtrack(introSegment.musicPrompt);
+           if (musicUrl) {
+             updatedSegment.musicUrl = musicUrl;
+             hasUpdates = true;
+           }
+         } catch(e) {
+           console.error("Failed to generate intro music", e);
+         }
+      }
+
+      if (hasUpdates) {
+        setGameState(prev => {
+          const newHistory = [...prev.history];
+          newHistory[0] = updatedSegment;
+          return { ...prev, history: newHistory };
+        });
+      }
+    };
+
+    generateIntroAssets();
+  }, []); 
 
   // Calculate current game time based on the last visible segment
   const visibleHistory = gameState.history.slice(0, segmentsToShow);
   const currentGameTime = visibleHistory[visibleHistory.length - 1]?.timestamp || "February 15, 1929";
+  // Get the most recent music URL from the visible history
+  const currentMusicUrl = [...visibleHistory].reverse().find(s => s.musicUrl)?.musicUrl;
 
   // Auto-scroll effect
   useEffect(() => {
@@ -48,6 +108,11 @@ const App: React.FC = () => {
     if (segmentsToShow < gameState.history.length) {
       setSegmentsToShow(prev => prev + 1);
     }
+  };
+
+  const handleLanguageSelect = (newLang: string) => {
+    setLanguage(newLang);
+    setNotification(`LANGUAGE CHANGED TO ${newLang.toUpperCase()}`);
   };
 
   const handleFullHistoryShare = async (upToIndex: number) => {
@@ -93,14 +158,13 @@ const App: React.FC = () => {
 
   const handlePlayerAction = async (actionText: string, _sentiment: string = 'intellectual') => {
     // 1. Add player choice to history immediately
-    // Determine timestamp from previous segment if possible, or use "Now"
     const lastTimestamp = gameState.history[gameState.history.length - 1]?.timestamp || "Unknown Time";
     
     const playerSegment: StorySegment = {
       id: Date.now().toString(),
       sender: Sender.Player,
       text: [`>I decided to: ${actionText}`],
-      timestamp: lastTimestamp // Player action happens at the same time as the last event
+      timestamp: lastTimestamp 
     };
 
     const updatedHistory = [...gameState.history, playerSegment];
@@ -109,15 +173,14 @@ const App: React.FC = () => {
       ...prev,
       history: updatedHistory,
       isThinking: true,
-      choices: [] // clear choices while thinking
+      choices: [] 
     }));
 
     setSegmentsToShow(updatedHistory.length);
 
     // 2. Call API
     try {
-      // Get last 8 segments for context to ensure continuity
-      const historySummary = updatedHistory.slice(-8).map(s => 
+      const historySummary = updatedHistory.slice(-10).map(s => 
         `[${s.timestamp || 'N/A'}] ${s.sender}: ${s.text.join(' ')}`
       ).join('\n');
       
@@ -125,7 +188,9 @@ const App: React.FC = () => {
         actionText, 
         historySummary,
         gameState.sanity,
-        gameState.objectives
+        gameState.visitCount,
+        gameState.objectives,
+        language
       );
 
       // 3. Process response
@@ -136,19 +201,23 @@ const App: React.FC = () => {
         timestamp: n.timestamp,
         imagePrompt: n.imagePrompt,
         imageUrl: n.imageUrl,
+        musicPrompt: n.musicPrompt,
+        musicUrl: n.musicUrl,
         tone: n.tone
       }));
 
-      // Convert API choices to local Choice type
       const newChoices: Choice[] = response.choices.map(c => ({
         id: c.id,
         text: c.text,
         sentiment: c.sentiment as any
       }));
 
-      // Calculate new sanity
+      // Calculate stats
       const sanityChange = response.statUpdates?.sanityChange || 0;
       const newSanity = Math.max(0, Math.min(100, gameState.sanity + sanityChange));
+      
+      const visitIncrement = response.statUpdates?.visitCountChange || 0;
+      const newVisitCount = gameState.visitCount + visitIncrement;
 
       // Update Objectives
       let updatedObjectives = [...gameState.objectives];
@@ -158,10 +227,9 @@ const App: React.FC = () => {
       if (response.newObjectives && response.newObjectives.length > 0) {
          const newObjs = response.newObjectives.map(o => ({
            ...o, 
-           completed: false // Ensure they start incomplete
+           completed: false 
          }));
          updatedObjectives = [...updatedObjectives, ...newObjs];
-         
          newObjs.forEach(obj => {
            notificationMessages.push(`NEW OBJECTIVE: ${obj.label}`);
          });
@@ -178,12 +246,11 @@ const App: React.FC = () => {
         });
       }
       
-      // Trigger Toast if there are notifications
       if (notificationMessages.length > 0) {
         setNotification(notificationMessages.join('\n'));
       }
 
-      // Check for sanity-based game over if not already flagged
+      // Check for game over
       let isGameOver = response.gameOver;
       let sanityMessage: StorySegment | null = null;
 
@@ -200,7 +267,6 @@ const App: React.FC = () => {
         }
       }
 
-      // Assemble final segments
       const segmentsToAdd = [...newSegments];
       if (sanityMessage) segmentsToAdd.push(sanityMessage);
 
@@ -211,7 +277,8 @@ const App: React.FC = () => {
         objectives: updatedObjectives,
         isThinking: false,
         gameOver: isGameOver,
-        sanity: newSanity
+        sanity: newSanity,
+        visitCount: newVisitCount
       }));
       
       setSegmentsToShow(prev => prev + segmentsToAdd.length);
@@ -245,49 +312,73 @@ const App: React.FC = () => {
       `}</style>
       
       <ToastNotification message={notification} onClose={() => setNotification(null)} />
+      <AmbientSound musicUrl={currentMusicUrl} enabled={musicEnabled} />
 
-      {/* Header */}
-      <header className="fixed top-0 left-0 right-0 h-16 z-40 bg-[#050505] border-b border-white/5 flex items-center justify-between px-4 shadow-lg">
+      {showLanguageSelector && (
+        <LanguageSelector 
+          currentLanguage={language}
+          onSelect={handleLanguageSelect}
+          onClose={() => setShowLanguageSelector(false)}
+        />
+      )}
+
+      <header className="fixed top-0 left-0 right-0 h-14 sm:h-16 z-40 bg-[#050505] border-b border-white/5 flex items-center justify-between px-3 sm:px-4 shadow-lg gap-2">
         
-        {/* Left: Menu / Title */}
-        <div className="flex items-center gap-3 z-10 opacity-80 hover:opacity-100 transition-opacity">
+        {/* Left: Icon + Title (Desktop) */}
+        <div className="flex items-center gap-2 sm:gap-3 z-10 opacity-80 hover:opacity-100 transition-opacity flex-shrink-0">
           <div className="p-1.5 rounded bg-green-900/20 border border-green-800/50">
              <BookOpen className="w-4 h-4 text-green-600" />
           </div>
           <h1 className="font-serif text-gray-400 hidden sm:block text-sm tracking-wider">THE ALEPH</h1>
         </div>
 
-        {/* Center: Date/Time Pill */}
-        <div className="absolute left-1/2 top-1/2 transform -translate-x-1/2 -translate-y-1/2">
-          <div className="flex items-center gap-2 px-3 py-1.5 rounded-full bg-[#0a1a0f] border border-green-800/60 shadow-[0_0_15px_rgba(22,101,52,0.1)]">
-            <Clock className="w-3 h-3 text-green-600" />
-            <span className="font-mono text-green-500 text-xs font-bold uppercase tracking-wider whitespace-nowrap">
+        {/* Center: Clock (Flexible on mobile, Absolute on Desktop) */}
+        <div className="flex-grow flex justify-center sm:absolute sm:left-1/2 sm:top-1/2 sm:transform sm:-translate-x-1/2 sm:-translate-y-1/2">
+          <div className="flex items-center gap-2 px-2 sm:px-3 py-1 sm:py-1.5 rounded-full bg-[#0a1a0f] border border-green-800/60 shadow-[0_0_15px_rgba(22,101,52,0.1)]">
+            <Clock className="w-3 h-3 text-green-600 flex-shrink-0" />
+            <span className="font-mono text-green-500 text-[10px] sm:text-xs font-bold uppercase tracking-wider whitespace-nowrap overflow-hidden text-ellipsis max-w-[15ch] sm:max-w-none">
               {currentGameTime}
             </span>
           </div>
         </div>
 
-        {/* Right: Controls & Stats */}
-        <div className="flex items-center gap-3 z-10">
+        {/* Right: Tools */}
+        <div className="flex items-center gap-1.5 sm:gap-3 z-10 flex-shrink-0">
           
           <button 
+            onClick={() => setShowLanguageSelector(true)}
+            className="transition-colors p-1.5 flex items-center gap-1 text-gray-600 hover:text-green-400"
+            title={`Current Language: ${language}`}
+          >
+            <Globe className="w-4 h-4" />
+            <span className="text-[10px] font-mono uppercase w-4 text-center truncate max-w-[3ch] hidden sm:block">
+              {language.substring(0, 2)}
+            </span>
+          </button>
+          
+          <button 
+            onClick={() => setMusicEnabled(!musicEnabled)}
+            className={`transition-colors p-1.5 flex items-center gap-1 ${musicEnabled ? 'text-green-400' : 'text-gray-600'}`}
+            title={musicEnabled ? "Ambient Music ON" : "Ambient Music OFF"}
+          >
+            {musicEnabled ? <Music2 className="w-4 h-4" /> : <Music className="w-4 h-4" />}
+          </button>
+
+          <button 
             onClick={() => setAutoPlayAudio(!autoPlayAudio)}
-            className={`transition-colors p-1 flex items-center gap-1 ${autoPlayAudio ? 'text-green-400' : 'text-gray-600'}`}
+            className={`transition-colors p-1.5 flex items-center gap-1 ${autoPlayAudio ? 'text-green-400' : 'text-gray-600'}`}
             title={autoPlayAudio ? "Auto-Play Audio ON" : "Auto-Play Audio OFF"}
           >
             {autoPlayAudio ? <Volume2 className="w-4 h-4" /> : <VolumeX className="w-4 h-4" />}
-            <span className="text-[10px] font-mono uppercase hidden sm:inline">{autoPlayAudio ? 'AUTO' : 'MANUAL'}</span>
           </button>
 
-          {/* Mobile Objective Toggle */}
           <button 
             onClick={() => setShowMobileObjectives(!showMobileObjectives)}
-            className="lg:hidden text-yellow-600 hover:text-yellow-400 transition-colors p-1"
+            className="lg:hidden text-yellow-600 hover:text-yellow-400 transition-colors p-1.5"
           >
             <Target className="w-4 h-4" />
           </button>
 
-          {/* Obsession Meter */}
           <div className="flex items-center gap-1.5 bg-gray-900 px-2 py-1 rounded border border-gray-800">
             <Eye className={`w-3 h-3 ${gameState.sanity > 80 ? 'text-red-500' : 'text-gray-500'}`} />
             <span className={`text-xs font-mono ${gameState.sanity > 80 ? 'text-red-400' : 'text-gray-400'}`}>
@@ -299,22 +390,23 @@ const App: React.FC = () => {
 
       <ObjectiveTracker objectives={gameState.objectives} />
 
-      {/* Mobile Objective Drawer */}
       {showMobileObjectives && (
-        <div className="fixed top-16 left-0 right-0 bg-black/95 border-b border-gray-800 p-4 z-30 lg:hidden">
-           <div className="space-y-2">
+        <div className="fixed top-14 left-0 right-0 bg-black/95 border-b border-gray-800 p-4 z-30 lg:hidden shadow-2xl">
+           <div className="space-y-3 max-h-[60vh] overflow-y-auto">
               {gameState.objectives.map(obj => (
-                <div key={obj.id} className={`flex items-center gap-2 text-xs ${obj.completed ? 'text-green-500 line-through' : 'text-yellow-500'}`}>
-                   <span>{obj.completed ? '[X]' : '[ ]'}</span>
-                   <span>{obj.label}</span>
+                <div key={obj.id} className={`flex items-start gap-2 text-xs ${obj.completed ? 'text-green-500' : 'text-yellow-500'}`}>
+                   <span className="mt-0.5">{obj.completed ? '[✓]' : '[O]'}</span>
+                   <div>
+                     <span className={obj.completed ? 'line-through opacity-50' : ''}>{obj.label}</span>
+                     {!obj.completed && <p className="text-[10px] text-gray-500 mt-0.5">{obj.description}</p>}
+                   </div>
                 </div>
               ))}
            </div>
         </div>
       )}
 
-      {/* Main Content */}
-      <main className="flex-grow w-full max-w-2xl mx-auto pt-24 pb-48 px-6">
+      <main className="flex-grow w-full max-w-2xl mx-auto pt-20 pb-32 px-4 sm:px-6">
         
         <div className="space-y-8">
           {gameState.history.slice(0, segmentsToShow).map((segment, index) => {
@@ -323,11 +415,10 @@ const App: React.FC = () => {
             return (
               <div 
                 key={segment.id} 
-                className={`relative group ${isPlayer ? "pl-4 border-l-2 border-gray-800 opacity-60 my-8" : "my-4"}`}
+                className={`relative group ${isPlayer ? "pl-4 border-l-2 border-gray-800 opacity-60 my-2" : "my-2"}`}
               >
-                {/* Scene Illustration */}
                 {segment.imageUrl && (
-                  <div className="mb-6 rounded-sm overflow-hidden border border-gray-800/50 shadow-2xl opacity-90 animate-in fade-in duration-1000">
+                  <div className="mb-4 rounded-sm overflow-hidden border border-gray-800/50 shadow-2xl opacity-90 animate-in fade-in duration-1000">
                     <img 
                       src={segment.imageUrl} 
                       alt="Scene visualization" 
@@ -336,7 +427,6 @@ const App: React.FC = () => {
                   </div>
                 )}
 
-                {/* Contextual Interactions */}
                 {segment.sender === Sender.Borges && segment.text.some(t => t.toLowerCase().includes('portraits') || t.toLowerCase().includes('cluttered little room')) && (
                   <>
                     <PortraitGallery />
@@ -352,11 +442,11 @@ const App: React.FC = () => {
                   sender={segment.sender} 
                   tone={segment.tone}
                   onComplete={handleSegmentComplete}
-                  autoPlay={autoPlayAudio && index === segmentsToShow - 1} // Only auto-play if it's the newest segment and toggle is ON
+                  autoPlay={autoPlayAudio && index === segmentsToShow - 1}
                 />
 
-                {/* Per-Segment Share Button */}
-                <div className="absolute -right-6 top-8 opacity-0 group-hover:opacity-100 transition-opacity duration-300 sm:block hidden">
+                {/* Share Button: Desktop (Hover outside) */}
+                <div className="absolute -right-6 top-8 opacity-0 group-hover:opacity-100 transition-opacity duration-300 hidden sm:block">
                   <button 
                     onClick={() => handleFullHistoryShare(index)}
                     className="p-1.5 text-gray-700 hover:text-green-500 transition-colors"
@@ -365,11 +455,12 @@ const App: React.FC = () => {
                     <Share2 className="w-3.5 h-3.5" />
                   </button>
                 </div>
-                 {/* Mobile Visible Share Button */}
-                 <div className="block sm:hidden mt-2 flex justify-end">
+
+                 {/* Share Button: Mobile (Inside, top right, subtle) */}
+                 <div className="absolute top-0 right-0 sm:hidden opacity-50">
                   <button 
                     onClick={() => handleFullHistoryShare(index)}
-                    className="p-1 text-gray-800 hover:text-green-800 transition-colors"
+                    className="p-2 text-gray-600 hover:text-green-500 transition-colors"
                   >
                     <Share2 className="w-3 h-3" />
                   </button>
@@ -380,7 +471,6 @@ const App: React.FC = () => {
           })}
         </div>
 
-        {/* Loading Indicator */}
         {gameState.isThinking && (
           <div className="flex items-center gap-3 mt-8 text-green-900/50 animate-pulse">
             <div className="w-1.5 h-1.5 bg-green-900 rounded-full" />
@@ -392,13 +482,11 @@ const App: React.FC = () => {
         <div ref={scrollRef} />
       </main>
 
-      {/* Footer Input Area */}
-      <div className="fixed bottom-0 left-0 right-0 bg-[#050505] border-t border-gray-900 p-4 z-40 pb-8">
+      <div className="fixed bottom-0 left-0 right-0 bg-[#050505] border-t border-gray-900 p-2 sm:p-4 z-40 pb-3 sm:pb-8 shadow-[0_-5px_20px_rgba(0,0,0,0.5)]">
         <div className="max-w-2xl mx-auto space-y-2">
           
-          {/* Predefined Choices - Horizontal Carousel */}
           {!gameState.isThinking && !gameState.gameOver && segmentsToShow >= gameState.history.length && gameState.choices.length > 0 && (
-            <div className="flex flex-row gap-3 overflow-x-auto pb-2 mb-2 snap-x snap-mandatory hide-scrollbar">
+            <div className="flex flex-row gap-2 sm:gap-3 overflow-x-auto pb-2 mb-1 snap-x snap-mandatory hide-scrollbar px-1">
               {gameState.choices.map((choice) => (
                 <ChoiceButton 
                   key={choice.id} 
@@ -410,7 +498,6 @@ const App: React.FC = () => {
             </div>
           )}
 
-          {/* Custom Input */}
           {!gameState.gameOver && (
              <ActionInput 
                 onSubmit={(text) => handlePlayerAction(text, 'custom')}
@@ -420,10 +507,10 @@ const App: React.FC = () => {
           )}
 
           {gameState.gameOver && (
-            <div className="text-center">
+            <div className="text-center py-2">
                <button 
                 onClick={() => window.location.reload()}
-                className="text-red-500 text-xs uppercase tracking-widest hover:text-red-400 transition-colors"
+                className="text-red-500 text-xs uppercase tracking-widest hover:text-red-400 transition-colors border border-red-900/30 px-4 py-2 rounded"
               >
                 [ Reset Timeline ]
               </button>

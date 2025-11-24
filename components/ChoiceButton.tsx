@@ -9,15 +9,6 @@ interface ChoiceButtonProps {
 }
 
 const ChoiceButton: React.FC<ChoiceButtonProps> = ({ choice, onClick, disabled }) => {
-  const getBorderColor = () => {
-    switch (choice.sentiment) {
-      case 'aggressive': return 'hover:border-red-500 hover:text-red-300';
-      case 'obsessive': return 'hover:border-purple-500 hover:text-purple-300';
-      case 'intellectual': return 'hover:border-blue-500 hover:text-blue-300';
-      default: return 'hover:border-green-500 hover:text-green-300';
-    }
-  };
-
   return (
     <motion.button
       initial={{ opacity: 0, x: 10 }}
@@ -27,21 +18,20 @@ const ChoiceButton: React.FC<ChoiceButtonProps> = ({ choice, onClick, disabled }
       onClick={() => onClick(choice.id)}
       disabled={disabled}
       className={`
-        min-w-[260px] sm:min-w-[300px] max-w-[300px] flex-shrink-0 snap-center
+        w-[85vw] sm:w-auto sm:min-w-[300px] max-w-[400px] flex-shrink-0 snap-center
         text-left p-4
-        border border-gray-700 rounded-lg
-        bg-gray-900/50 backdrop-blur-sm
-        transition-all duration-300
+        border border-gray-800 rounded-lg
+        bg-gray-950/40 backdrop-blur-sm
+        transition-all duration-500
         text-gray-400 font-serif
-        ${getBorderColor()}
+        hover:border-gray-600 hover:bg-gray-900 hover:text-gray-200
+        shadow-lg shadow-black/50
         ${disabled ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}
       `}
     >
-      <span className="mr-3 text-xs uppercase tracking-widest opacity-50 block mb-1">
-        [{choice.sentiment || 'act'}]
-      </span>
-      <span className="block leading-tight">
-        {choice.text}
+      {/* Sentiment label removed for ambiguity */}
+      <span className="block leading-tight text-sm sm:text-base italic opacity-90">
+        "{choice.text}"
       </span>
     </motion.button>
   );

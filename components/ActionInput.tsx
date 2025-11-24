@@ -116,7 +116,7 @@ const ActionInput: React.FC<ActionInputProps> = ({ onSubmit, disabled, isThinkin
   };
 
   return (
-    <form onSubmit={handleSubmit} className="w-full mb-4 relative z-50 flex gap-3 items-stretch">
+    <form onSubmit={handleSubmit} className="w-full mb-1 relative z-50 flex gap-2 items-stretch">
       <div className="relative flex-grow group">
         <input
           type="text"
@@ -126,7 +126,7 @@ const ActionInput: React.FC<ActionInputProps> = ({ onSubmit, disabled, isThinkin
           placeholder={isListening ? "Listening..." : (isThinking ? "Fate is being written..." : "Write your action...")}
           className={`
             w-full h-full bg-black/40 border-b border-gray-700 
-            text-gray-200 font-mono text-sm py-3 px-3
+            text-gray-200 font-mono text-sm py-2.5 px-3
             focus:outline-none focus:border-green-500/50 focus:bg-black/60
             transition-all duration-300 rounded-t
             disabled:opacity-50 disabled:cursor-not-allowed
@@ -143,7 +143,7 @@ const ActionInput: React.FC<ActionInputProps> = ({ onSubmit, disabled, isThinkin
           onClick={toggleListening}
           disabled={disabled || isThinking}
           className={`
-            flex-shrink-0 w-12 flex items-center justify-center
+            flex-shrink-0 w-10 sm:w-12 flex items-center justify-center
             rounded border transition-all duration-300
             ${isListening 
               ? 'bg-red-900/20 border-red-500 text-red-500 animate-pulse shadow-[0_0_15px_rgba(239,68,68,0.3)]' 
@@ -152,7 +152,7 @@ const ActionInput: React.FC<ActionInputProps> = ({ onSubmit, disabled, isThinkin
           `}
           title="Record Voice Action"
         >
-          {isListening ? <Activity className="w-5 h-5 animate-bounce" /> : <Mic className="w-5 h-5" />}
+          {isListening ? <Activity className="w-4 h-4 sm:w-5 sm:h-5 animate-bounce" /> : <Mic className="w-4 h-4 sm:w-5 sm:h-5" />}
         </button>
       )}
       
@@ -160,14 +160,14 @@ const ActionInput: React.FC<ActionInputProps> = ({ onSubmit, disabled, isThinkin
         type="submit"
         disabled={!input.trim() || disabled || isThinking}
         className={`
-          flex-shrink-0 w-12 flex items-center justify-center
+          flex-shrink-0 w-10 sm:w-12 flex items-center justify-center
           rounded border transition-all duration-300
           ${input.trim() && !disabled && !isThinking
             ? 'bg-green-900/20 border-green-500 text-green-500 hover:bg-green-900/40 shadow-[0_0_10px_rgba(34,197,94,0.2)]'
             : 'bg-gray-900/40 border-gray-800 text-gray-700 cursor-not-allowed'}
         `}
       >
-        <Send className="w-5 h-5" />
+        <Send className="w-4 h-4 sm:w-5 sm:h-5" />
       </button>
     </form>
   );

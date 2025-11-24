@@ -1,4 +1,3 @@
-
 import React, { useEffect, useState, useRef } from 'react';
 import { motion } from 'framer-motion';
 import { Sender } from '../types';
@@ -169,7 +168,7 @@ const TypingText: React.FC<TypingTextProps> = ({ lines, sender, tone, onComplete
     switch (sUpper) {
       case Sender.Borges:
       case 'BORGES':
-        return 'text-green-400 font-mono text-sm sm:text-base leading-relaxed'; 
+        return 'text-green-400 font-mono text-sm sm:text-base leading-snug'; 
       case Sender.Carlos:
       case 'CARLOS':
         return 'text-yellow-400 font-serif italic text-lg sm:text-xl leading-loose tracking-wide'; 
@@ -184,7 +183,7 @@ const TypingText: React.FC<TypingTextProps> = ({ lines, sender, tone, onComplete
   };
 
   return (
-    <div className="relative group space-y-3 mb-6">
+    <div className="relative group space-y-1 mb-4">
       
       {/* Audio Control Button (Visible on hover or when playing) */}
       <div className={`absolute -right-8 top-0 transition-opacity duration-300 ${isPlaying || visibleLines === lines.length ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'}`}>
