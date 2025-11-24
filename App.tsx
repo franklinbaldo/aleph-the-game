@@ -1,6 +1,5 @@
-
 import React, { useState, useEffect, useRef } from 'react';
-import { BookOpen, Skull, Eye, Target, Clock, Volume2, VolumeX, Share2, Globe, Music, Music2 } from 'lucide-react';
+import { BookOpen, Skull, Eye, Target, Clock, Volume2, VolumeX, Share2, Globe, Music, Music2, AlertTriangle } from 'lucide-react';
 import { INITIAL_SEGMENTS, INITIAL_OBJECTIVES } from './constants';
 import { GameState, Choice, StorySegment, Sender, Objective } from './types';
 import { generateNextStorySegment, generateIllustration, generateSoundtrack } from './services/geminiService';
@@ -38,16 +37,37 @@ const App: React.FC = () => {
   // Language State
   const [language, setLanguage] = useState<string>('English');
   const [showLanguageSelector, setShowLanguageSelector] = useState(false);
+  const [pendingLanguage, setPendingLanguage] = useState<string | null>(null);
   
   const scrollRef = useRef<HTMLDivElement>(null);
-  const hasGeneratedIntroRef = useRef(false);
+  // Removed hasGeneratedIntroRef to ensure generation attempts on mount
+
+  // Load language preference on mount
+  useEffect(() => {
+    const savedLang = localStorage.getItem('aleph_language');
+    if (savedLang) {
+      setLanguage(savedLang);
+    }
+  }, []);
+
+  // Keyboard Shortcuts for Choices
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (gameState.isThinking || gameState.gameOver) return;
+      const num = parseInt(e.key);
+      if (!isNaN(num) && num > 0 && num <= gameState.choices.length) {
+        handleChoice(gameState.choices[num - 1].id);
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [gameState.choices, gameState.isThinking, gameState.gameOver]);
 
   // Generate intro assets on load
   useEffect(() => {
     const generateIntroAssets = async () => {
-      if (hasGeneratedIntroRef.current) return;
-      hasGeneratedIntroRef.current = true;
-
+      // Logic simplified to run on mount. If image exists (e.g. state preserved), this is safe as we check props.
+      
       const introSegment = gameState.history[0];
       let updatedSegment = { ...introSegment };
       let hasUpdates = false;
@@ -110,9 +130,21 @@ const App: React.FC = () => {
     }
   };
 
-  const handleLanguageSelect = (newLang: string) => {
-    setLanguage(newLang);
-    setNotification(`LANGUAGE CHANGED TO ${newLang.toUpperCase()}`);
+  const handleLanguageSelectAttempt = (newLang: string) => {
+    // Instead of setting immediately, set pending to trigger confirmation
+    setPendingLanguage(newLang);
+    setShowLanguageSelector(false);
+  };
+
+  const confirmLanguageChange = () => {
+    if (pendingLanguage) {
+      localStorage.setItem('aleph_language', pendingLanguage);
+      window.location.reload();
+    }
+  };
+
+  const cancelLanguageChange = () => {
+    setPendingLanguage(null);
   };
 
   const handleFullHistoryShare = async (upToIndex: number) => {
@@ -300,7 +332,7 @@ const App: React.FC = () => {
   };
 
   return (
-    <div className="min-h-screen bg-[#050505] text-gray-300 font-sans selection:bg-green-900 selection:text-white flex flex-col">
+    <div className="min-h-[100dvh] bg-[#050505] text-gray-300 font-sans selection:bg-green-900 selection:text-white flex flex-col">
       <style>{`
         .hide-scrollbar::-webkit-scrollbar {
           display: none;
@@ -314,10 +346,43 @@ const App: React.FC = () => {
       <ToastNotification message={notification} onClose={() => setNotification(null)} />
       <AmbientSound musicUrl={currentMusicUrl} enabled={musicEnabled} />
 
+      {/* CONFIRMATION MODAL FOR LANGUAGE CHANGE */}
+      {pendingLanguage && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/90 backdrop-blur-sm p-4 animate-in fade-in duration-300">
+          <div className="bg-[#0a0a0a] border border-red-900/50 rounded-lg max-w-sm w-full p-6 shadow-[0_0_30px_rgba(185,28,28,0.2)] animate-in zoom-in-95 duration-300">
+            <div className="flex items-center gap-3 mb-4 text-red-500">
+              <AlertTriangle className="w-6 h-6" />
+              <h3 className="font-mono font-bold tracking-widest uppercase">Timeline Reset</h3>
+            </div>
+            
+            <p className="text-gray-400 font-serif mb-6 text-sm leading-relaxed">
+              Changing the narrative language to <span className="text-green-400 font-bold uppercase">{pendingLanguage}</span> requires reconstructing the universe from the beginning. 
+              <br/><br/>
+              Your current progress will be lost.
+            </p>
+
+            <div className="flex gap-3">
+              <button 
+                onClick={cancelLanguageChange}
+                className="flex-1 py-2 border border-gray-700 rounded text-gray-400 font-mono text-xs uppercase tracking-wider hover:bg-gray-800 transition-colors"
+              >
+                Abort
+              </button>
+              <button 
+                onClick={confirmLanguageChange}
+                className="flex-1 py-2 bg-red-900/20 border border-red-800 rounded text-red-400 font-mono text-xs uppercase tracking-wider hover:bg-red-900/40 hover:text-red-300 transition-colors shadow-[0_0_10px_rgba(220,38,38,0.1)]"
+              >
+                Reset & Proceed
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {showLanguageSelector && (
         <LanguageSelector 
           currentLanguage={language}
-          onSelect={handleLanguageSelect}
+          onSelect={handleLanguageSelectAttempt}
           onClose={() => setShowLanguageSelector(false)}
         />
       )}
@@ -487,7 +552,7 @@ const App: React.FC = () => {
           
           {!gameState.isThinking && !gameState.gameOver && segmentsToShow >= gameState.history.length && gameState.choices.length > 0 && (
             <div className="flex flex-row gap-2 sm:gap-3 overflow-x-auto pb-2 mb-1 snap-x snap-mandatory hide-scrollbar px-1">
-              {gameState.choices.map((choice) => (
+              {gameState.choices.map((choice, index) => (
                 <ChoiceButton 
                   key={choice.id} 
                   choice={choice} 

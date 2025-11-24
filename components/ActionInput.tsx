@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { Mic, Send, MicOff, Activity } from 'lucide-react';
 
 // --- Types for Web Speech API ---
@@ -65,6 +65,13 @@ const ActionInput: React.FC<ActionInputProps> = ({ onSubmit, disabled, isThinkin
   const [input, setInput] = useState('');
   const [isListening, setIsListening] = useState(false);
   const [recognition, setRecognition] = useState<SpeechRecognition | null>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    if (!disabled && !isThinking && inputRef.current) {
+      inputRef.current.focus();
+    }
+  }, [disabled, isThinking]);
 
   useEffect(() => {
     if (typeof window !== 'undefined') {
@@ -119,6 +126,7 @@ const ActionInput: React.FC<ActionInputProps> = ({ onSubmit, disabled, isThinkin
     <form onSubmit={handleSubmit} className="w-full mb-1 relative z-50 flex gap-2 items-stretch">
       <div className="relative flex-grow group">
         <input
+          ref={inputRef}
           type="text"
           value={input}
           onChange={(e) => setInput(e.target.value)}

@@ -81,7 +81,7 @@ const TypingText: React.FC<TypingTextProps> = ({ lines, sender, tone, onComplete
   useEffect(() => {
     if (visibleLines < lines.length) {
       // Standard typing logic
-      const delay = lines[visibleLines].startsWith('>') ? 300 : 500;
+      const delay = lines[visibleLines].startsWith('>') ? 200 : 400; // Slightly faster default
       const timer = setTimeout(() => {
         setVisibleLines(prev => prev + 1);
       }, delay);
@@ -90,6 +90,13 @@ const TypingText: React.FC<TypingTextProps> = ({ lines, sender, tone, onComplete
       onComplete?.();
     }
   }, [visibleLines, lines, onComplete]);
+
+  const finishTyping = () => {
+    if (visibleLines < lines.length) {
+      setVisibleLines(lines.length);
+      onComplete?.();
+    }
+  };
 
   const stopPlayback = () => {
     shouldStopRef.current = true;
@@ -155,7 +162,8 @@ const TypingText: React.FC<TypingTextProps> = ({ lines, sender, tone, onComplete
     }
   };
 
-  const handleTogglePlay = () => {
+  const handleTogglePlay = (e: React.MouseEvent) => {
+    e.stopPropagation(); // Prevent triggering finishTyping
     if (isPlaying) {
       stopPlayback();
     } else {
@@ -168,10 +176,10 @@ const TypingText: React.FC<TypingTextProps> = ({ lines, sender, tone, onComplete
     switch (sUpper) {
       case Sender.Borges:
       case 'BORGES':
-        return 'text-green-400 font-mono text-sm sm:text-base leading-snug'; 
+        return 'text-green-400 font-mono text-sm sm:text-base leading-tight'; 
       case Sender.Carlos:
       case 'CARLOS':
-        return 'text-yellow-400 font-serif italic text-lg sm:text-xl leading-loose tracking-wide'; 
+        return 'text-yellow-400 font-serif italic text-lg sm:text-xl leading-relaxed tracking-wide'; 
       case Sender.System:
       case 'SYSTEM':
         return 'text-red-400 font-mono text-xs sm:text-sm uppercase tracking-widest font-bold';
@@ -183,7 +191,11 @@ const TypingText: React.FC<TypingTextProps> = ({ lines, sender, tone, onComplete
   };
 
   return (
-    <div className="relative group space-y-1 mb-4">
+    <div 
+      className="relative group mb-2 cursor-pointer" 
+      onClick={finishTyping}
+      title="Click to skip typing"
+    >
       
       {/* Audio Control Button (Visible on hover or when playing) */}
       <div className={`absolute -right-8 top-0 transition-opacity duration-300 ${isPlaying || visibleLines === lines.length ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'}`}>
@@ -214,9 +226,10 @@ const TypingText: React.FC<TypingTextProps> = ({ lines, sender, tone, onComplete
             key={index}
             initial={{ opacity: 0, x: -5 }}
             animate={{ opacity: 1, x: 0 }}
-            transition={{ duration: 0.4 }}
+            transition={{ duration: 0.2 }}
             className={`
               ${getSenderStyle(sender)}
+              block
               transition-all duration-300
               ${isPlaying ? 'opacity-100 drop-shadow-[0_0_5px_rgba(255,255,255,0.1)]' : 'opacity-90'}
             `}
