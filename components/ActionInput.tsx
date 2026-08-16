@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Mic, Send, MicOff, Activity } from 'lucide-react';
+import { Mic, Send, Activity } from 'lucide-react';
 
 // --- Types for Web Speech API ---
 interface SpeechRecognition extends EventTarget {
@@ -84,7 +84,7 @@ const ActionInput: React.FC<ActionInputProps> = ({ onSubmit, disabled, isThinkin
 
         recognitionInstance.onresult = (event: SpeechRecognitionEvent) => {
           const transcript = event.results[0][0].transcript;
-          setInput(transcript); // Overwrite input with speech result
+          setInput(transcript);
           setIsListening(false);
         };
 
@@ -130,7 +130,9 @@ const ActionInput: React.FC<ActionInputProps> = ({ onSubmit, disabled, isThinkin
           type="text"
           value={input}
           onChange={(e) => setInput(e.target.value)}
+          onKeyDown={(e) => e.stopPropagation()}
           disabled={disabled || isThinking}
+          aria-label="Free-form action"
           placeholder={isListening ? "Listening..." : (isThinking ? "Fate is being written..." : "Write your action...")}
           className={`
             w-full h-full bg-black/40 border-b border-gray-700 
@@ -150,6 +152,8 @@ const ActionInput: React.FC<ActionInputProps> = ({ onSubmit, disabled, isThinkin
           type="button"
           onClick={toggleListening}
           disabled={disabled || isThinking}
+          aria-label={isListening ? 'Stop voice input' : 'Start voice input'}
+          aria-pressed={isListening}
           className={`
             flex-shrink-0 w-10 sm:w-12 flex items-center justify-center
             rounded border transition-all duration-300
@@ -158,15 +162,16 @@ const ActionInput: React.FC<ActionInputProps> = ({ onSubmit, disabled, isThinkin
               : 'bg-gray-900/40 border-gray-700 text-gray-400 hover:border-gray-500 hover:text-gray-200 hover:bg-gray-800'}
             disabled:opacity-50 disabled:cursor-not-allowed
           `}
-          title="Record Voice Action"
+          title={isListening ? 'Stop Voice Action' : 'Record Voice Action'}
         >
-          {isListening ? <Activity className="w-4 h-4 sm:w-5 sm:h-5 animate-bounce" /> : <Mic className="w-4 h-4 sm:w-5 sm:h-5" />}
+          {isListening ? <Activity className="w-4 h-4 sm:w-5 sm:h-5 animate-bounce" aria-hidden="true" /> : <Mic className="w-4 h-4 sm:w-5 sm:h-5" aria-hidden="true" />}
         </button>
       )}
       
       <button
         type="submit"
         disabled={!input.trim() || disabled || isThinking}
+        aria-label="Submit free-form action"
         className={`
           flex-shrink-0 w-10 sm:w-12 flex items-center justify-center
           rounded border transition-all duration-300
@@ -175,7 +180,7 @@ const ActionInput: React.FC<ActionInputProps> = ({ onSubmit, disabled, isThinkin
             : 'bg-gray-900/40 border-gray-800 text-gray-700 cursor-not-allowed'}
         `}
       >
-        <Send className="w-4 h-4 sm:w-5 sm:h-5" />
+        <Send className="w-4 h-4 sm:w-5 sm:h-5" aria-hidden="true" />
       </button>
     </form>
   );
