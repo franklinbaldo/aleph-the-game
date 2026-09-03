@@ -174,7 +174,7 @@ const TypingText: React.FC<TypingTextProps> = ({ lines, sender, tone, onComplete
 
   return (
     <div className="relative group mb-2 cursor-pointer" onClick={finishTyping} title="Click to skip typing">
-      <div className={`absolute -right-8 top-0 transition-opacity duration-300 motion-reduce:transition-none ${isPlaying || visibleLines === lines.length ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'}`}>
+      <div className={`absolute right-0 sm:-right-8 top-0 transition-opacity duration-300 motion-reduce:transition-none ${isPlaying || visibleLines === lines.length ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'}`}>
         <button
           onClick={handleTogglePlay}
           disabled={isLoadingAudio && isPlaying}
