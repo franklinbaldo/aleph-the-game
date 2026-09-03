@@ -19,6 +19,17 @@
       .font-mono {
         font-family: 'JetBrains Mono', monospace;
       }
+
+      /* The mobile header already has enough room for its short narrative timestamp;
+         the 15ch cap was what turned a precise date into an involuntary ellipsis. */
+      @media (max-width: 639px) {
+        header span[class*="max-w-[15ch]"] {
+          max-width: none !important;
+          overflow: visible !important;
+          text-overflow: clip !important;
+          letter-spacing: 0.04em !important;
+        }
+      }
     </style>
   <script type="importmap">
 {
