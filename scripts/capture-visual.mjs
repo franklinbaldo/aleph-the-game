@@ -56,13 +56,32 @@ try {
       throw new Error(`Expected full narrative date to remain visible for ${captureCase.name}`);
     }
 
-    const layout = await page.evaluate(() => ({
-      document_width: document.documentElement.scrollWidth,
-      viewport_width: document.documentElement.clientWidth,
-    }));
+    const layout = await page.evaluate(() => {
+      const viewportWidth = document.documentElement.clientWidth;
+      const offenders = [...document.querySelectorAll('*')]
+        .map(element => {
+          const rect = element.getBoundingClientRect();
+          return {
+            tag: element.tagName.toLowerCase(),
+            class_name: typeof element.className === 'string' ? element.className : '',
+            left: Math.round(rect.left),
+            right: Math.round(rect.right),
+            width: Math.round(rect.width),
+          };
+        })
+        .filter(item => item.right > viewportWidth + 1 || item.left < -1)
+        .sort((a, b) => b.right - a.right)
+        .slice(0, 8);
+
+      return {
+        document_width: document.documentElement.scrollWidth,
+        viewport_width: viewportWidth,
+        offenders,
+      };
+    });
     if (layout.document_width > layout.viewport_width) {
       throw new Error(
-        `Unexpected document overflow for ${captureCase.name}: ${layout.document_width}px > ${layout.viewport_width}px`,
+        `Unexpected document overflow for ${captureCase.name}: ${layout.document_width}px > ${layout.viewport_width}px; offenders=${JSON.stringify(layout.offenders)}`,
       );
     }
 
