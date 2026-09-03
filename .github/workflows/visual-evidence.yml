@@ -1,0 +1,66 @@
+name: Visual evidence
+
+on:
+  pull_request:
+    paths:
+      - 'App.tsx'
+      - 'components/**'
+      - 'index.tsx'
+      - 'index.html'
+      - 'constants.ts'
+      - 'package.json'
+      - 'vite.config.ts'
+      - 'scripts/capture-visual.mjs'
+      - '.github/workflows/visual-evidence.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'App.tsx'
+      - 'components/**'
+      - 'index.tsx'
+      - 'index.html'
+      - 'constants.ts'
+      - 'package.json'
+      - 'vite.config.ts'
+      - 'scripts/capture-visual.mjs'
+      - '.github/workflows/visual-evidence.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  capture:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Install dependencies
+        run: npm install
+      - name: Install Chromium
+        run: npx playwright install --with-deps chromium
+      - name: Build without Gemini credentials
+        run: npm run build
+      - name: Start production preview
+        run: |
+          npm run preview -- --host 127.0.0.1 --port 4173 > /tmp/aleph-preview.log 2>&1 &
+          for attempt in {1..30}; do
+            if curl --fail --silent http://127.0.0.1:4173/ > /dev/null; then
+              exit 0
+            fi
+            sleep 1
+          done
+          cat /tmp/aleph-preview.log
+          exit 1
+      - name: Capture browser evidence
+        env:
+          GITHUB_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: npm run capture:visual
+      - name: Upload browser evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: aleph-visual-${{ github.event.pull_request.head.sha || github.sha }}
+          path: artifacts/visual
+          if-no-files-found: error

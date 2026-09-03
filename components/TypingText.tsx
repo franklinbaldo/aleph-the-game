@@ -1,5 +1,5 @@
 import React, { useEffect, useState, useRef } from 'react';
-import { motion } from 'framer-motion';
+import { motion, useReducedMotion } from 'framer-motion';
 import { Sender } from '../types';
 import { generateSpeech } from '../services/geminiService';
 import { Play, Square, Loader2 } from 'lucide-react';
@@ -12,7 +12,6 @@ interface TypingTextProps {
   autoPlay?: boolean;
 }
 
-// Helper to decode base64 string to byte array
 function decode(base64: string) {
   const binaryString = atob(base64);
   const len = binaryString.length;
@@ -23,7 +22,6 @@ function decode(base64: string) {
   return bytes;
 }
 
-// Helper to decode raw PCM data to AudioBuffer
 async function decodeAudioData(
   data: Uint8Array,
   ctx: AudioContext,
@@ -44,26 +42,29 @@ async function decodeAudioData(
 }
 
 const TypingText: React.FC<TypingTextProps> = ({ lines, sender, tone, onComplete, autoPlay = false }) => {
-  const [visibleLines, setVisibleLines] = useState<number>(0);
-  
-  // Audio State
+  const shouldReduceMotion = useReducedMotion();
+  const [visibleLines, setVisibleLines] = useState<number>(() => shouldReduceMotion ? lines.length : 0);
   const [isPlaying, setIsPlaying] = useState(false);
   const [isLoadingAudio, setIsLoadingAudio] = useState(false);
-  
   const audioContextRef = useRef<AudioContext | null>(null);
   const currentSourceRef = useRef<AudioBufferSourceNode | null>(null);
   const isMountedRef = useRef(true);
   const shouldStopRef = useRef(false);
 
   useEffect(() => {
+    if (shouldReduceMotion) {
+      setVisibleLines(lines.length);
+      onComplete?.();
+    }
+  }, [shouldReduceMotion, lines.length, onComplete]);
+
+  useEffect(() => {
     isMountedRef.current = true;
-    // Initialize AudioContext on mount
     const AudioContextClass = window.AudioContext || (window as any).webkitAudioContext;
     if (AudioContextClass) {
       audioContextRef.current = new AudioContextClass({ sampleRate: 24000 });
     }
 
-    // If Auto-play is enabled, start playing immediately
     if (autoPlay) {
       startPlayback();
     }
@@ -77,19 +78,17 @@ const TypingText: React.FC<TypingTextProps> = ({ lines, sender, tone, onComplete
     };
   }, []);
 
-  // Text Reveal Animation Effect
   useEffect(() => {
+    if (shouldReduceMotion) return;
     if (visibleLines < lines.length) {
-      // Standard typing logic
-      const delay = lines[visibleLines].startsWith('>') ? 200 : 400; // Slightly faster default
+      const delay = lines[visibleLines].startsWith('>') ? 200 : 400;
       const timer = setTimeout(() => {
         setVisibleLines(prev => prev + 1);
       }, delay);
       return () => clearTimeout(timer);
-    } else {
-      onComplete?.();
     }
-  }, [visibleLines, lines, onComplete]);
+    onComplete?.();
+  }, [visibleLines, lines, onComplete, shouldReduceMotion]);
 
   const finishTyping = () => {
     if (visibleLines < lines.length) {
@@ -108,54 +107,40 @@ const TypingText: React.FC<TypingTextProps> = ({ lines, sender, tone, onComplete
   };
 
   const startPlayback = async () => {
-    if (isPlaying) return; // Prevent double start
-    
+    if (isPlaying) return;
     setIsPlaying(true);
     shouldStopRef.current = false;
 
-    // Ensure audio context is running
     if (audioContextRef.current?.state === 'suspended') {
       await audioContextRef.current.resume();
     }
 
     try {
       setIsLoadingAudio(true);
-      
-      // Join all lines to send as a single request for smoother audio
       const fullText = lines.join(' ');
-      
-      // If we are starting playback, ensure all text is visible so user can read along
       setVisibleLines(lines.length);
-
       const base64Audio = await generateSpeech(fullText, sender, tone);
       setIsLoadingAudio(false);
 
       if (shouldStopRef.current || !isMountedRef.current) return;
-
       if (!base64Audio) {
-        // Skip if generation failed
         stopPlayback();
         return;
       }
 
       const ctx = audioContextRef.current;
       if (!ctx) return;
-
       const audioBytes = decode(base64Audio);
       const audioBuffer = await decodeAudioData(audioBytes, ctx, 24000, 1);
-
       const source = ctx.createBufferSource();
       source.buffer = audioBuffer;
       source.connect(ctx.destination);
-
       source.onended = () => {
         if (shouldStopRef.current) return;
         stopPlayback();
       };
-
       currentSourceRef.current = source;
       source.start(0);
-
     } catch (err) {
       console.error("Playback error", err);
       stopPlayback();
@@ -163,12 +148,9 @@ const TypingText: React.FC<TypingTextProps> = ({ lines, sender, tone, onComplete
   };
 
   const handleTogglePlay = (e: React.MouseEvent) => {
-    e.stopPropagation(); // Prevent triggering finishTyping
-    if (isPlaying) {
-      stopPlayback();
-    } else {
-      startPlayback();
-    }
+    e.stopPropagation();
+    if (isPlaying) stopPlayback();
+    else startPlayback();
   };
 
   const getSenderStyle = (s: Sender | string) => {
@@ -176,10 +158,10 @@ const TypingText: React.FC<TypingTextProps> = ({ lines, sender, tone, onComplete
     switch (sUpper) {
       case Sender.Borges:
       case 'BORGES':
-        return 'text-green-400 font-mono text-sm sm:text-base leading-tight'; 
+        return 'text-green-400 font-mono text-sm sm:text-base leading-tight';
       case Sender.Carlos:
       case 'CARLOS':
-        return 'text-yellow-400 font-serif italic text-lg sm:text-xl leading-relaxed tracking-wide'; 
+        return 'text-yellow-400 font-serif italic text-lg sm:text-xl leading-relaxed tracking-wide';
       case Sender.System:
       case 'SYSTEM':
         return 'text-red-400 font-mono text-xs sm:text-sm uppercase tracking-widest font-bold';
@@ -191,57 +173,28 @@ const TypingText: React.FC<TypingTextProps> = ({ lines, sender, tone, onComplete
   };
 
   return (
-    <div 
-      className="relative group mb-2 cursor-pointer" 
-      onClick={finishTyping}
-      title="Click to skip typing"
-    >
-      
-      {/* Audio Control Button (Visible on hover or when playing) */}
-      <div className={`absolute -right-8 top-0 transition-opacity duration-300 ${isPlaying || visibleLines === lines.length ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'}`}>
-        <button 
+    <div className="relative group mb-2 cursor-pointer" onClick={finishTyping} title="Click to skip typing">
+      <div className={`absolute -right-8 top-0 transition-opacity duration-300 motion-reduce:transition-none ${isPlaying || visibleLines === lines.length ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'}`}>
+        <button
           onClick={handleTogglePlay}
           disabled={isLoadingAudio && isPlaying}
-          className={`
-            p-2 rounded-full border bg-black/50 backdrop-blur-sm transition-all
-            ${isPlaying 
-              ? 'border-green-500 text-green-400 shadow-[0_0_10px_rgba(34,197,94,0.2)]' 
-              : 'border-gray-800 text-gray-600 hover:text-green-500 hover:border-green-500/50'}
-          `}
+          className={`p-2 rounded-full border bg-black/50 backdrop-blur-sm transition-all motion-reduce:transition-none ${isPlaying ? 'border-green-500 text-green-400 shadow-[0_0_10px_rgba(34,197,94,0.2)]' : 'border-gray-800 text-gray-600 hover:text-green-500 hover:border-green-500/50'}`}
           title={isPlaying ? "Stop Narration" : "Play Narration"}
         >
-          {isLoadingAudio ? (
-            <Loader2 className="w-3 h-3 animate-spin" />
-          ) : isPlaying ? (
-            <Square className="w-3 h-3 fill-current" />
-          ) : (
-            <Play className="w-3 h-3 fill-current" />
-          )}
+          {isLoadingAudio ? <Loader2 className="w-3 h-3 animate-spin motion-reduce:animate-none" /> : isPlaying ? <Square className="w-3 h-3 fill-current" /> : <Play className="w-3 h-3 fill-current" />}
         </button>
       </div>
 
       {lines.slice(0, visibleLines + 1).map((line, index) => (
-         index <= visibleLines && index < lines.length && (
+        index <= visibleLines && index < lines.length && (
           <motion.div
             key={index}
-            initial={{ opacity: 0, x: -5 }}
+            initial={shouldReduceMotion ? false : { opacity: 0, x: -5 }}
             animate={{ opacity: 1, x: 0 }}
-            transition={{ duration: 0.2 }}
-            className={`
-              ${getSenderStyle(sender)}
-              block
-              transition-all duration-300
-              ${isPlaying ? 'opacity-100 drop-shadow-[0_0_5px_rgba(255,255,255,0.1)]' : 'opacity-90'}
-            `}
+            transition={shouldReduceMotion ? { duration: 0 } : { duration: 0.2 }}
+            className={`${getSenderStyle(sender)} block transition-all duration-300 motion-reduce:transition-none ${isPlaying ? 'opacity-100 drop-shadow-[0_0_5px_rgba(255,255,255,0.1)]' : 'opacity-90'}`}
           >
-            {line.startsWith('>') ? (
-              <span>
-                <span className="opacity-40 mr-2 select-none">{'>'}</span>
-                {line.substring(1)}
-              </span>
-            ) : (
-              line
-            )}
+            {line.startsWith('>') ? <span><span className="opacity-40 mr-2 select-none">{'>'}</span>{line.substring(1)}</span> : line}
           </motion.div>
         )
       ))}
