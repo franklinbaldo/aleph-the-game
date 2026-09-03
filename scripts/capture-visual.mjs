@@ -44,11 +44,11 @@ try {
     await page.waitForTimeout(captureCase.reducedMotion === 'reduce' ? 250 : 1800);
 
     const bodyText = await page.locator('body').innerText();
-    if (!bodyText.includes('THE ALEPH')) {
-      throw new Error(`Expected THE ALEPH in rendered body for ${captureCase.name}`);
-    }
     if (!bodyText.includes('To forget is to kill her again.')) {
       throw new Error(`Expected initial choice in rendered body for ${captureCase.name}`);
+    }
+    if ((await page.title()) !== 'The Aleph: Infinite Borges') {
+      throw new Error(`Expected Aleph document title for ${captureCase.name}`);
     }
 
     const file = `${outDir}/${captureCase.name}.png`;
