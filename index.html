@@ -19,6 +19,39 @@
       .font-mono {
         font-family: 'JetBrains Mono', monospace;
       }
+
+      @media (max-width: 639px) {
+        header {
+          gap: 0.25rem !important;
+          padding-inline: 0.5rem !important;
+        }
+
+        header > div:nth-child(2) > div {
+          gap: 0.375rem !important;
+          padding-inline: 0.375rem !important;
+        }
+
+        header > div:nth-child(2) span {
+          max-width: none !important;
+          overflow: visible !important;
+          text-overflow: clip !important;
+          letter-spacing: 0 !important;
+          font-size: 0.5625rem !important;
+        }
+
+        header > div:last-child {
+          gap: 0.125rem !important;
+        }
+
+        header > div:last-child button {
+          padding: 0.25rem !important;
+        }
+
+        header > div:last-child > div {
+          gap: 0.25rem !important;
+          padding-inline: 0.375rem !important;
+        }
+      }
     </style>
   <script type="importmap">
 {
