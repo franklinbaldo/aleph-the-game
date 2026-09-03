@@ -51,6 +51,21 @@ try {
       throw new Error(`Expected Aleph document title for ${captureCase.name}`);
     }
 
+    const currentDate = page.getByText('February 15, 1929', { exact: true }).first();
+    if (!(await currentDate.isVisible())) {
+      throw new Error(`Expected full narrative date to remain visible for ${captureCase.name}`);
+    }
+
+    const layout = await page.evaluate(() => ({
+      document_width: document.documentElement.scrollWidth,
+      viewport_width: document.documentElement.clientWidth,
+    }));
+    if (layout.document_width > layout.viewport_width) {
+      throw new Error(
+        `Unexpected document overflow for ${captureCase.name}: ${layout.document_width}px > ${layout.viewport_width}px`,
+      );
+    }
+
     const file = `${outDir}/${captureCase.name}.png`;
     await page.screenshot({ path: file, fullPage: true });
     manifest.cases.push({
@@ -58,6 +73,9 @@ try {
       viewport: captureCase.viewport,
       reduced_motion: captureCase.reducedMotion,
       file,
+      narrative_date: 'February 15, 1929',
+      document_width: layout.document_width,
+      viewport_width: layout.viewport_width,
     });
     await context.close();
   }
