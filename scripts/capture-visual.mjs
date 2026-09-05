@@ -109,21 +109,15 @@ try {
   await input.fill('Inspect the cellar door');
   await page.getByRole('button', { name: 'Submit free-form action' }).click();
 
-  // Before the fix, model failure is converted into a fake SYSTEM narrative plus
-  // a normal story choice. The invalid key on this evidence-only branch makes the
-  // same fallback deterministic; clicking the story finishes its typing animation.
-  await page.waitForTimeout(1500);
-  const story = page.locator('main').first();
-  await story.click({ position: { x: 20, y: 180 } }).catch(() => {});
-  await page.waitForTimeout(300);
-
-  const retry = page.getByText('Attempt to reconnect', { exact: true });
-  await retry.waitFor({ state: 'visible', timeout: 15000 });
+  // The evidence-only branch injects an invalid key so the old service deterministically
+  // follows the same fallback it already had in main. The material defect is visible as
+  // soon as a technical failure is rendered inside the story itself; choice timing is
+  // irrelevant to the before screenshot.
+  const oldFailure = page.getByText('Error connecting to the Aleph.', { exact: true });
+  await oldFailure.waitFor({ state: 'visible', timeout: 60000 });
   const errorBody = await page.locator('body').innerText();
-  if (!errorBody.includes('Error connecting to the Aleph.')) {
-    throw new Error('Expected the old technical failure to be rendered as story content');
-  }
   const playerActionOccurrences = errorBody.split('I decided to: Inspect the cellar door').length - 1;
+  const reconnectChoiceVisible = await page.getByText('Attempt to reconnect', { exact: true }).isVisible().catch(() => false);
   const file = `${outDir}/mobile-generation-error.png`;
   await page.screenshot({ path: file, fullPage: true });
   manifest.cases.push({
@@ -131,9 +125,10 @@ try {
     viewport: { width: 390, height: 844 },
     reduced_motion: 'reduce',
     file,
-    retry_label: 'Attempt to reconnect',
     technical_failure_rendered_as_story: true,
-    explicit_error_message: false,
+    reconnect_choice_contract: 'Attempt to reconnect',
+    reconnect_choice_visible_at_capture: reconnectChoiceVisible,
+    explicit_error_message_outside_story: false,
     player_action_occurrences: playerActionOccurrences,
     method: 'old main behavior with invalid API key injected only to make the existing fallback deterministic'
   });
