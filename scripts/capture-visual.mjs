@@ -113,14 +113,17 @@ try {
   await input.fill('Inspect the cellar door');
   await page.getByRole('button', { name: 'Submit free-form action' }).click();
 
-  // The evidence-only branch returns an immediate HTTP authentication error from the
-  // generation endpoint. The old production code then follows its own existing fallback,
-  // rendering that technical failure as story content.
-  const oldFailure = page.getByText('Error connecting to the Aleph.', { exact: true });
-  await oldFailure.waitFor({ state: 'visible', timeout: 15000 });
+  // TypingText renders the old SYSTEM line as greentext, splitting the visual '>'
+  // from the text node. Observe the rendered body instead of requiring one exact DOM
+  // element whose text excludes the greentext marker.
+  await page.waitForFunction(
+    () => document.body.innerText.includes('Error connecting to the Aleph.'),
+    null,
+    { timeout: 15000 },
+  );
   const errorBody = await page.locator('body').innerText();
   const playerActionOccurrences = errorBody.split('I decided to: Inspect the cellar door').length - 1;
-  const reconnectChoiceVisible = await page.getByText('Attempt to reconnect', { exact: true }).isVisible().catch(() => false);
+  const reconnectChoiceVisible = errorBody.includes('Attempt to reconnect');
   const file = `${outDir}/mobile-generation-error.png`;
   await page.screenshot({ path: file, fullPage: true });
   manifest.cases.push({
