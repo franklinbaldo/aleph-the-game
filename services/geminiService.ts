@@ -327,16 +327,7 @@ export async function generateNextStorySegment(
 
   } catch (error) {
     console.error("CRITICAL ERROR in generateNextStorySegment:", error);
-    return {
-      narrative: [{
-        sender: 'SYSTEM',
-        lines: ['>Error connecting to the Aleph.', '>The universe fractures.'],
-        timestamp: 'Unknown',
-        tone: 'glitchy'
-      }],
-      choices: [{ id: 'retry', text: 'Attempt to reconnect', sentiment: 'passive' }],
-      gameOver: false
-    };
+    throw error;
   }
 }
 
