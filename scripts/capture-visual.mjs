@@ -16,11 +16,15 @@ await mkdir(outDir, { recursive: true });
 const browser = await chromium.launch({ headless: true });
 const manifest = { revision, route: '/', generated_at: new Date().toISOString(), cases: [] };
 
-async function blockGeneration(context) {
+async function rejectGeneration(context) {
   await context.route('**/*', async route => {
     const url = route.request().url();
     if (/generativelanguage|googleapis|googleusercontent/.test(url)) {
-      await route.abort();
+      await route.fulfill({
+        status: 401,
+        contentType: 'application/json',
+        body: JSON.stringify({ error: { code: 401, message: 'invalid test credential', status: 'UNAUTHENTICATED' } }),
+      });
       return;
     }
     await route.continue();
@@ -33,7 +37,7 @@ try {
       viewport: captureCase.viewport,
       reducedMotion: captureCase.reducedMotion,
     });
-    await blockGeneration(context);
+    await rejectGeneration(context);
     const page = await context.newPage();
     await page.goto(baseUrl, { waitUntil: 'networkidle' });
     const story = page.locator('main').first();
@@ -102,19 +106,18 @@ try {
     viewport: { width: 390, height: 844 },
     reducedMotion: 'reduce',
   });
-  await blockGeneration(context);
+  await rejectGeneration(context);
   const page = await context.newPage();
   await page.goto(baseUrl, { waitUntil: 'networkidle' });
   const input = page.getByRole('textbox', { name: 'Free-form action' });
   await input.fill('Inspect the cellar door');
   await page.getByRole('button', { name: 'Submit free-form action' }).click();
 
-  // The evidence-only branch injects an invalid key so the old service deterministically
-  // follows the same fallback it already had in main. The material defect is visible as
-  // soon as a technical failure is rendered inside the story itself; choice timing is
-  // irrelevant to the before screenshot.
+  // The evidence-only branch returns an immediate HTTP authentication error from the
+  // generation endpoint. The old production code then follows its own existing fallback,
+  // rendering that technical failure as story content.
   const oldFailure = page.getByText('Error connecting to the Aleph.', { exact: true });
-  await oldFailure.waitFor({ state: 'visible', timeout: 60000 });
+  await oldFailure.waitFor({ state: 'visible', timeout: 15000 });
   const errorBody = await page.locator('body').innerText();
   const playerActionOccurrences = errorBody.split('I decided to: Inspect the cellar door').length - 1;
   const reconnectChoiceVisible = await page.getByText('Attempt to reconnect', { exact: true }).isVisible().catch(() => false);
@@ -130,7 +133,7 @@ try {
     reconnect_choice_visible_at_capture: reconnectChoiceVisible,
     explicit_error_message_outside_story: false,
     player_action_occurrences: playerActionOccurrences,
-    method: 'old main behavior with invalid API key injected only to make the existing fallback deterministic'
+    method: 'old main behavior; browser returns HTTP 401 only to make the existing service fallback deterministic'
   });
   await context.close();
 } finally {
