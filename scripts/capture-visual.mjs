@@ -33,9 +33,7 @@ try {
       viewport: captureCase.viewport,
       reducedMotion: captureCase.reducedMotion,
     });
-
     await blockGeneration(context);
-
     const page = await context.newPage();
     await page.goto(baseUrl, { waitUntil: 'networkidle' });
     const story = page.locator('main').first();
@@ -110,9 +108,15 @@ try {
   const input = page.getByRole('textbox', { name: 'Free-form action' });
   await input.fill('Inspect the cellar door');
   await page.getByRole('button', { name: 'Submit free-form action' }).click();
-  const retry = page.getByText('Try to regain composure...', { exact: true });
+
+  // Before the fix, model failure is converted into a fake SYSTEM narrative plus
+  // a normal story choice. Clicking that choice would then become another player action.
+  const retry = page.getByText('Attempt to reconnect', { exact: true });
   await retry.waitFor({ state: 'visible', timeout: 60000 });
   const errorBody = await page.locator('body').innerText();
+  if (!errorBody.includes('Error connecting to the Aleph.')) {
+    throw new Error('Expected the old technical failure to be rendered as story content');
+  }
   const playerActionOccurrences = errorBody.split('I decided to: Inspect the cellar door').length - 1;
   const file = `${outDir}/mobile-generation-error.png`;
   await page.screenshot({ path: file, fullPage: true });
@@ -121,7 +125,8 @@ try {
     viewport: { width: 390, height: 844 },
     reduced_motion: 'reduce',
     file,
-    retry_label: 'Try to regain composure...',
+    retry_label: 'Attempt to reconnect',
+    technical_failure_rendered_as_story: true,
     explicit_error_message: false,
     player_action_occurrences: playerActionOccurrences,
   });
