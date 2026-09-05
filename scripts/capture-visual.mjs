@@ -16,6 +16,17 @@ await mkdir(outDir, { recursive: true });
 const browser = await chromium.launch({ headless: true });
 const manifest = { revision, route: '/', generated_at: new Date().toISOString(), cases: [] };
 
+async function blockGeneration(context) {
+  await context.route('**/*', async route => {
+    const url = route.request().url();
+    if (/generativelanguage|googleapis|googleusercontent/.test(url)) {
+      await route.abort();
+      return;
+    }
+    await route.continue();
+  });
+}
+
 try {
   for (const captureCase of cases) {
     const context = await browser.newContext({
@@ -23,14 +34,7 @@ try {
       reducedMotion: captureCase.reducedMotion,
     });
 
-    await context.route('**/*', async route => {
-      const url = route.request().url();
-      if (/generativelanguage|googleapis|googleusercontent/.test(url)) {
-        await route.abort();
-        return;
-      }
-      await route.continue();
-    });
+    await blockGeneration(context);
 
     const page = await context.newPage();
     await page.goto(baseUrl, { waitUntil: 'networkidle' });
@@ -98,6 +102,54 @@ try {
     });
     await context.close();
   }
+
+  // Force generation to fail and verify that recovery remains technical rather than
+  // becoming another player choice in the narrative.
+  const context = await browser.newContext({
+    viewport: { width: 390, height: 844 },
+    reducedMotion: 'reduce',
+  });
+  await blockGeneration(context);
+  const page = await context.newPage();
+  await page.goto(baseUrl, { waitUntil: 'networkidle' });
+  const input = page.getByRole('textbox', { name: 'Free-form action' });
+  await input.fill('Inspect the cellar door');
+  await page.getByRole('button', { name: 'Submit free-form action' }).click();
+
+  const errorMessage = page.getByText('The timeline could not continue. Your action is preserved.', { exact: true });
+  await errorMessage.waitFor({ state: 'visible', timeout: 60000 });
+  const retry = page.getByRole('button', { name: 'Retry last action' });
+  await retry.waitFor({ state: 'visible' });
+
+  let errorBody = await page.locator('body').innerText();
+  let playerActionOccurrences = errorBody.split('I decided to: Inspect the cellar door').length - 1;
+  if (playerActionOccurrences !== 1) {
+    throw new Error(`Expected one player action before retry, got ${playerActionOccurrences}`);
+  }
+  if (errorBody.includes('Try to regain composure...')) {
+    throw new Error('Technical retry text leaked into the narrative choices');
+  }
+
+  await retry.click();
+  await errorMessage.waitFor({ state: 'visible', timeout: 60000 });
+  errorBody = await page.locator('body').innerText();
+  playerActionOccurrences = errorBody.split('I decided to: Inspect the cellar door').length - 1;
+  if (playerActionOccurrences !== 1) {
+    throw new Error(`Retry duplicated the player action; expected 1 occurrence, got ${playerActionOccurrences}`);
+  }
+
+  const file = `${outDir}/mobile-generation-error.png`;
+  await page.screenshot({ path: file, fullPage: true });
+  manifest.cases.push({
+    name: 'mobile-generation-error',
+    viewport: { width: 390, height: 844 },
+    reduced_motion: 'reduce',
+    file,
+    retry_label: 'Retry last action',
+    explicit_error_message: true,
+    player_action_occurrences_after_retry: playerActionOccurrences,
+  });
+  await context.close();
 } finally {
   await browser.close();
 }

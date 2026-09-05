@@ -13,6 +13,11 @@ import ToastNotification from './components/ToastNotification';
 import LanguageSelector from './components/LanguageSelector';
 import AmbientSound from './components/AmbientSound';
 
+type RetryAction = {
+  text: string;
+  sentiment: string;
+};
+
 const App: React.FC = () => {
   const [gameState, setGameState] = useState<GameState>({
     history: INITIAL_SEGMENTS,
@@ -33,6 +38,8 @@ const App: React.FC = () => {
   const [notification, setNotification] = useState<string | null>(null);
   const [autoPlayAudio, setAutoPlayAudio] = useState<boolean>(false);
   const [musicEnabled, setMusicEnabled] = useState<boolean>(false);
+  const [generationError, setGenerationError] = useState<string | null>(null);
+  const [retryAction, setRetryAction] = useState<RetryAction | null>(null);
   
   // Language State
   const [language, setLanguage] = useState<string>('English');
@@ -188,29 +195,31 @@ const App: React.FC = () => {
     }
   };
 
-  const handlePlayerAction = async (actionText: string, _sentiment: string = 'intellectual') => {
-    // 1. Add player choice to history immediately
+  const handlePlayerAction = async (
+    actionText: string,
+    sentiment: string = 'intellectual',
+    appendPlayerAction: boolean = true,
+  ) => {
     const lastTimestamp = gameState.history[gameState.history.length - 1]?.timestamp || "Unknown Time";
-    
     const playerSegment: StorySegment = {
       id: Date.now().toString(),
       sender: Sender.Player,
       text: [`>I decided to: ${actionText}`],
       timestamp: lastTimestamp 
     };
+    const updatedHistory = appendPlayerAction
+      ? [...gameState.history, playerSegment]
+      : [...gameState.history];
 
-    const updatedHistory = [...gameState.history, playerSegment];
-
+    setGenerationError(null);
     setGameState(prev => ({
       ...prev,
       history: updatedHistory,
       isThinking: true,
       choices: [] 
     }));
-
     setSegmentsToShow(updatedHistory.length);
 
-    // 2. Call API
     try {
       const historySummary = updatedHistory.slice(-10).map(s => 
         `[${s.timestamp || 'N/A'}] ${s.sender}: ${s.text.join(' ')}`
@@ -225,7 +234,6 @@ const App: React.FC = () => {
         language
       );
 
-      // 3. Process response
       const newSegments: StorySegment[] = response.narrative.map((n, idx) => ({
         id: `gen-${Date.now()}-${idx}`,
         sender: n.sender as Sender,
@@ -244,18 +252,14 @@ const App: React.FC = () => {
         sentiment: c.sentiment as any
       }));
 
-      // Calculate stats
       const sanityChange = response.statUpdates?.sanityChange || 0;
       const newSanity = Math.max(0, Math.min(100, gameState.sanity + sanityChange));
-      
       const visitIncrement = response.statUpdates?.visitCountChange || 0;
       const newVisitCount = gameState.visitCount + visitIncrement;
 
-      // Update Objectives
       let updatedObjectives = [...gameState.objectives];
       let notificationMessages: string[] = [];
 
-      // Handle New Objectives
       if (response.newObjectives && response.newObjectives.length > 0) {
          const newObjs = response.newObjectives.map(o => ({
            ...o, 
@@ -267,7 +271,6 @@ const App: React.FC = () => {
          });
       }
 
-      // Handle Completed Objectives
       if (response.completedObjectiveIds && response.completedObjectiveIds.length > 0) {
         updatedObjectives = updatedObjectives.map(obj => {
           if (response.completedObjectiveIds?.includes(obj.id) && !obj.completed) {
@@ -282,7 +285,6 @@ const App: React.FC = () => {
         setNotification(notificationMessages.join('\n'));
       }
 
-      // Check for game over
       let isGameOver = response.gameOver;
       let sanityMessage: StorySegment | null = null;
 
@@ -302,6 +304,8 @@ const App: React.FC = () => {
       const segmentsToAdd = [...newSegments];
       if (sanityMessage) segmentsToAdd.push(sanityMessage);
 
+      setRetryAction(null);
+      setGenerationError(null);
       setGameState(prev => ({
         ...prev,
         history: [...prev.history, ...segmentsToAdd],
@@ -312,17 +316,23 @@ const App: React.FC = () => {
         sanity: newSanity,
         visitCount: newVisitCount
       }));
-      
       setSegmentsToShow(prev => prev + segmentsToAdd.length);
 
     } catch (error) {
       console.error("Failed to generate story", error);
+      setRetryAction({ text: actionText, sentiment });
+      setGenerationError('The timeline could not continue. Your action is preserved.');
       setGameState(prev => ({
         ...prev,
         isThinking: false,
-        choices: [{ id: 'retry', text: 'Try to regain composure...', sentiment: 'passive' }]
+        choices: []
       }));
     }
+  };
+
+  const handleRetry = () => {
+    if (!retryAction || gameState.isThinking) return;
+    void handlePlayerAction(retryAction.text, retryAction.sentiment, false);
   };
 
   const handleChoice = (choiceId: string) => {
@@ -388,8 +398,6 @@ const App: React.FC = () => {
       )}
 
       <header className="fixed top-0 left-0 right-0 h-14 sm:h-16 z-40 bg-[#050505] border-b border-white/5 flex items-center justify-between px-3 sm:px-4 shadow-lg gap-2">
-        
-        {/* Left: Icon + Title (Desktop) */}
         <div className="flex items-center gap-2 sm:gap-3 z-10 opacity-80 hover:opacity-100 transition-opacity flex-shrink-0">
           <div className="p-1.5 rounded bg-green-900/20 border border-green-800/50">
              <BookOpen className="w-4 h-4 text-green-600" />
@@ -397,7 +405,6 @@ const App: React.FC = () => {
           <h1 className="font-serif text-gray-400 hidden sm:block text-sm tracking-wider">THE ALEPH</h1>
         </div>
 
-        {/* Center: Clock (Flexible on mobile, Absolute on Desktop) */}
         <div className="flex-grow flex justify-center sm:absolute sm:left-1/2 sm:top-1/2 sm:transform sm:-translate-x-1/2 sm:-translate-y-1/2">
           <div className="flex items-center gap-2 px-2 sm:px-3 py-1 sm:py-1.5 rounded-full bg-[#0a1a0f] border border-green-800/60 shadow-[0_0_15px_rgba(22,101,52,0.1)]">
             <Clock className="w-3 h-3 text-green-600 flex-shrink-0" />
@@ -407,9 +414,7 @@ const App: React.FC = () => {
           </div>
         </div>
 
-        {/* Right: Tools */}
         <div className="flex items-center gap-1.5 sm:gap-3 z-10 flex-shrink-0">
-          
           <button 
             onClick={() => setShowLanguageSelector(true)}
             className="transition-colors p-1.5 flex items-center gap-1 text-gray-600 hover:text-green-400"
@@ -472,11 +477,9 @@ const App: React.FC = () => {
       )}
 
       <main className="flex-grow w-full max-w-2xl mx-auto pt-20 pb-32 px-4 sm:px-6">
-        
         <div className="space-y-8">
           {gameState.history.slice(0, segmentsToShow).map((segment, index) => {
             const isPlayer = segment.sender === Sender.Player;
-            
             return (
               <div 
                 key={segment.id} 
@@ -510,7 +513,6 @@ const App: React.FC = () => {
                   autoPlay={autoPlayAudio && index === segmentsToShow - 1}
                 />
 
-                {/* Share Button: Desktop (Hover outside) */}
                 <div className="absolute -right-6 top-8 opacity-0 group-hover:opacity-100 transition-opacity duration-300 hidden sm:block">
                   <button 
                     onClick={() => handleFullHistoryShare(index)}
@@ -521,8 +523,7 @@ const App: React.FC = () => {
                   </button>
                 </div>
 
-                 {/* Share Button: Mobile (Inside, top right, subtle) */}
-                 <div className="absolute top-0 right-0 sm:hidden opacity-50">
+                <div className="absolute top-0 right-0 sm:hidden opacity-50">
                   <button 
                     onClick={() => handleFullHistoryShare(index)}
                     className="p-2 text-gray-600 hover:text-green-500 transition-colors"
@@ -530,7 +531,6 @@ const App: React.FC = () => {
                     <Share2 className="w-3 h-3" />
                   </button>
                 </div>
-
               </div>
             );
           })}
@@ -549,10 +549,26 @@ const App: React.FC = () => {
 
       <div className="fixed bottom-0 left-0 right-0 bg-[#050505] border-t border-gray-900 p-2 sm:p-4 z-40 pb-3 sm:pb-8 shadow-[0_-5px_20px_rgba(0,0,0,0.5)]">
         <div className="max-w-2xl mx-auto space-y-2">
+          {generationError && retryAction && !gameState.isThinking && !gameState.gameOver && (
+            <div role="alert" className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-3 rounded border border-yellow-900/60 bg-yellow-950/20 px-3 py-2.5">
+              <div className="min-w-0 flex-1">
+                <p className="font-mono text-[10px] uppercase tracking-[0.16em] text-yellow-600">Timeline interrupted</p>
+                <p className="mt-1 text-xs leading-relaxed text-gray-400">{generationError}</p>
+              </div>
+              <button
+                type="button"
+                onClick={handleRetry}
+                aria-label="Retry last action"
+                className="self-start sm:self-auto flex-shrink-0 rounded border border-yellow-800/70 px-3 py-2 font-mono text-[10px] uppercase tracking-wider text-yellow-500 hover:bg-yellow-900/20 hover:text-yellow-300 transition-colors"
+              >
+                Retry last action
+              </button>
+            </div>
+          )}
           
-          {!gameState.isThinking && !gameState.gameOver && segmentsToShow >= gameState.history.length && gameState.choices.length > 0 && (
+          {!gameState.isThinking && !gameState.gameOver && !retryAction && segmentsToShow >= gameState.history.length && gameState.choices.length > 0 && (
             <div className="flex flex-row gap-2 sm:gap-3 overflow-x-auto pb-2 mb-1 snap-x snap-mandatory hide-scrollbar px-1">
-              {gameState.choices.map((choice, index) => (
+              {gameState.choices.map((choice) => (
                 <ChoiceButton 
                   key={choice.id} 
                   choice={choice} 
@@ -566,7 +582,7 @@ const App: React.FC = () => {
           {!gameState.gameOver && (
              <ActionInput 
                 onSubmit={(text) => handlePlayerAction(text, 'custom')}
-                disabled={gameState.isThinking}
+                disabled={gameState.isThinking || Boolean(retryAction)}
                 isThinking={gameState.isThinking}
              />
           )}
