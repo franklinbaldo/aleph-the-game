@@ -103,8 +103,8 @@ try {
     await context.close();
   }
 
-  // Force the live generation boundary to fail and record what the player actually sees.
-  // This case is intentionally behavioral: it protects the recovery state, not Gemini.
+  // Force generation to fail and verify that recovery remains technical rather than
+  // becoming another player choice in the narrative.
   const context = await browser.newContext({
     viewport: { width: 390, height: 844 },
     reducedMotion: 'reduce',
@@ -115,10 +115,29 @@ try {
   const input = page.getByRole('textbox', { name: 'Free-form action' });
   await input.fill('Inspect the cellar door');
   await page.getByRole('button', { name: 'Submit free-form action' }).click();
-  const retry = page.getByText('Try to regain composure...', { exact: true });
-  await retry.waitFor({ state: 'visible', timeout: 15000 });
-  const errorBody = await page.locator('body').innerText();
-  const playerActionOccurrences = errorBody.split('I decided to: Inspect the cellar door').length - 1;
+
+  const errorMessage = page.getByText('The timeline could not continue. Your action is preserved.', { exact: true });
+  await errorMessage.waitFor({ state: 'visible', timeout: 60000 });
+  const retry = page.getByRole('button', { name: 'Retry last action' });
+  await retry.waitFor({ state: 'visible' });
+
+  let errorBody = await page.locator('body').innerText();
+  let playerActionOccurrences = errorBody.split('I decided to: Inspect the cellar door').length - 1;
+  if (playerActionOccurrences !== 1) {
+    throw new Error(`Expected one player action before retry, got ${playerActionOccurrences}`);
+  }
+  if (errorBody.includes('Try to regain composure...')) {
+    throw new Error('Technical retry text leaked into the narrative choices');
+  }
+
+  await retry.click();
+  await errorMessage.waitFor({ state: 'visible', timeout: 60000 });
+  errorBody = await page.locator('body').innerText();
+  playerActionOccurrences = errorBody.split('I decided to: Inspect the cellar door').length - 1;
+  if (playerActionOccurrences !== 1) {
+    throw new Error(`Retry duplicated the player action; expected 1 occurrence, got ${playerActionOccurrences}`);
+  }
+
   const file = `${outDir}/mobile-generation-error.png`;
   await page.screenshot({ path: file, fullPage: true });
   manifest.cases.push({
@@ -126,9 +145,9 @@ try {
     viewport: { width: 390, height: 844 },
     reduced_motion: 'reduce',
     file,
-    retry_label: 'Try to regain composure...',
-    explicit_error_message: false,
-    player_action_occurrences: playerActionOccurrences,
+    retry_label: 'Retry last action',
+    explicit_error_message: true,
+    player_action_occurrences_after_retry: playerActionOccurrences,
   });
   await context.close();
 } finally {
