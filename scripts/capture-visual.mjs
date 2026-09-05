@@ -112,9 +112,9 @@ try {
   await blockGeneration(context);
   const page = await context.newPage();
   await page.goto(baseUrl, { waitUntil: 'networkidle' });
-  const input = page.getByLabel('Free-form action');
+  const input = page.getByRole('textbox', { name: 'Free-form action' });
   await input.fill('Inspect the cellar door');
-  await page.getByLabel('Submit free-form action').click();
+  await page.getByRole('button', { name: 'Submit free-form action' }).click();
   const retry = page.getByText('Try to regain composure...', { exact: true });
   await retry.waitFor({ state: 'visible', timeout: 15000 });
   const errorBody = await page.locator('body').innerText();
