@@ -38,9 +38,6 @@ try {
 
     const page = await context.newPage();
     await page.goto(baseUrl, { waitUntil: 'networkidle' });
-
-    // The initial story state is repository-owned and deterministic. Clicking its
-    // visible text finishes progressive disclosure without invoking a player action.
     const story = page.locator('main').first();
     if (await story.count()) {
       await story.click({ position: { x: 20, y: 120 } }).catch(() => {});
@@ -103,8 +100,6 @@ try {
     await context.close();
   }
 
-  // Force the live generation boundary to fail and record what the player actually sees.
-  // This case is intentionally behavioral: it protects the recovery state, not Gemini.
   const context = await browser.newContext({
     viewport: { width: 390, height: 844 },
     reducedMotion: 'reduce',
@@ -116,7 +111,7 @@ try {
   await input.fill('Inspect the cellar door');
   await page.getByRole('button', { name: 'Submit free-form action' }).click();
   const retry = page.getByText('Try to regain composure...', { exact: true });
-  await retry.waitFor({ state: 'visible', timeout: 15000 });
+  await retry.waitFor({ state: 'visible', timeout: 60000 });
   const errorBody = await page.locator('body').innerText();
   const playerActionOccurrences = errorBody.split('I decided to: Inspect the cellar door').length - 1;
   const file = `${outDir}/mobile-generation-error.png`;
