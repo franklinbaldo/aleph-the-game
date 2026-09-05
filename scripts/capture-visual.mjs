@@ -113,17 +113,15 @@ try {
   await input.fill('Inspect the cellar door');
   await page.getByRole('button', { name: 'Submit free-form action' }).click();
 
-  // TypingText renders the old SYSTEM line as greentext, splitting the visual '>'
-  // from the text node. Observe the rendered body instead of requiring one exact DOM
-  // element whose text excludes the greentext marker.
-  await page.waitForFunction(
-    () => document.body.innerText.includes('Error connecting to the Aleph.'),
-    null,
-    { timeout: 15000 },
-  );
+  // Always preserve what the old UI actually rendered after the deterministic HTTP
+  // failure. The manifest records whether each known old fallback string became visible;
+  // inspection can then distinguish an application state from a selector problem.
+  await page.waitForTimeout(10000);
   const errorBody = await page.locator('body').innerText();
   const playerActionOccurrences = errorBody.split('I decided to: Inspect the cellar door').length - 1;
+  const oldErrorVisible = errorBody.includes('Error connecting to the Aleph.');
   const reconnectChoiceVisible = errorBody.includes('Attempt to reconnect');
+  const regainComposureVisible = errorBody.includes('Try to regain composure...');
   const file = `${outDir}/mobile-generation-error.png`;
   await page.screenshot({ path: file, fullPage: true });
   manifest.cases.push({
@@ -131,11 +129,13 @@ try {
     viewport: { width: 390, height: 844 },
     reduced_motion: 'reduce',
     file,
-    technical_failure_rendered_as_story: true,
+    technical_failure_rendered_as_story: oldErrorVisible,
     reconnect_choice_contract: 'Attempt to reconnect',
     reconnect_choice_visible_at_capture: reconnectChoiceVisible,
+    regain_composure_visible_at_capture: regainComposureVisible,
     explicit_error_message_outside_story: false,
     player_action_occurrences: playerActionOccurrences,
+    body_excerpt: errorBody.slice(-1200),
     method: 'old main behavior; browser returns HTTP 401 only to make the existing service fallback deterministic'
   });
   await context.close();
