@@ -4,7 +4,7 @@ import react from '@vitejs/plugin-react';
 
 export default defineConfig(({ mode }) => {
     const env = loadEnv(mode, '.', '');
-    const captureFallback = process.env.ALEPH_CAPTURE_OLD_FAILURE === '1';
+    const captureFallback = process.env.GITHUB_HEAD_REF === 'evidence/generation-error-before';
     return {
       server: {
         port: 3000,
