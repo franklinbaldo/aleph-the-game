@@ -16,6 +16,17 @@ await mkdir(outDir, { recursive: true });
 const browser = await chromium.launch({ headless: true });
 const manifest = { revision, route: '/', generated_at: new Date().toISOString(), cases: [] };
 
+async function blockGeneration(context) {
+  await context.route('**/*', async route => {
+    const url = route.request().url();
+    if (/generativelanguage|googleapis|googleusercontent/.test(url)) {
+      await route.abort();
+      return;
+    }
+    await route.continue();
+  });
+}
+
 try {
   for (const captureCase of cases) {
     const context = await browser.newContext({
@@ -23,14 +34,7 @@ try {
       reducedMotion: captureCase.reducedMotion,
     });
 
-    await context.route('**/*', async route => {
-      const url = route.request().url();
-      if (/generativelanguage|googleapis|googleusercontent/.test(url)) {
-        await route.abort();
-        return;
-      }
-      await route.continue();
-    });
+    await blockGeneration(context);
 
     const page = await context.newPage();
     await page.goto(baseUrl, { waitUntil: 'networkidle' });
@@ -98,6 +102,35 @@ try {
     });
     await context.close();
   }
+
+  // Force the live generation boundary to fail and record what the player actually sees.
+  // This case is intentionally behavioral: it protects the recovery state, not Gemini.
+  const context = await browser.newContext({
+    viewport: { width: 390, height: 844 },
+    reducedMotion: 'reduce',
+  });
+  await blockGeneration(context);
+  const page = await context.newPage();
+  await page.goto(baseUrl, { waitUntil: 'networkidle' });
+  const input = page.getByLabel('Free-form action');
+  await input.fill('Inspect the cellar door');
+  await page.getByLabel('Submit free-form action').click();
+  const retry = page.getByText('Try to regain composure...', { exact: true });
+  await retry.waitFor({ state: 'visible', timeout: 15000 });
+  const errorBody = await page.locator('body').innerText();
+  const playerActionOccurrences = errorBody.split('I decided to: Inspect the cellar door').length - 1;
+  const file = `${outDir}/mobile-generation-error.png`;
+  await page.screenshot({ path: file, fullPage: true });
+  manifest.cases.push({
+    name: 'mobile-generation-error',
+    viewport: { width: 390, height: 844 },
+    reduced_motion: 'reduce',
+    file,
+    retry_label: 'Try to regain composure...',
+    explicit_error_message: false,
+    player_action_occurrences: playerActionOccurrences,
+  });
+  await context.close();
 } finally {
   await browser.close();
 }
