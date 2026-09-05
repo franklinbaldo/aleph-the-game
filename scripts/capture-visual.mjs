@@ -110,9 +110,15 @@ try {
   await page.getByRole('button', { name: 'Submit free-form action' }).click();
 
   // Before the fix, model failure is converted into a fake SYSTEM narrative plus
-  // a normal story choice. Clicking that choice would then become another player action.
+  // a normal story choice. The invalid key on this evidence-only branch makes the
+  // same fallback deterministic; clicking the story finishes its typing animation.
+  await page.waitForTimeout(1500);
+  const story = page.locator('main').first();
+  await story.click({ position: { x: 20, y: 180 } }).catch(() => {});
+  await page.waitForTimeout(300);
+
   const retry = page.getByText('Attempt to reconnect', { exact: true });
-  await retry.waitFor({ state: 'visible', timeout: 60000 });
+  await retry.waitFor({ state: 'visible', timeout: 15000 });
   const errorBody = await page.locator('body').innerText();
   if (!errorBody.includes('Error connecting to the Aleph.')) {
     throw new Error('Expected the old technical failure to be rendered as story content');
@@ -129,6 +135,7 @@ try {
     technical_failure_rendered_as_story: true,
     explicit_error_message: false,
     player_action_occurrences: playerActionOccurrences,
+    method: 'old main behavior with invalid API key injected only to make the existing fallback deterministic'
   });
   await context.close();
 } finally {
